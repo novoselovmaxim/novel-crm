@@ -155,6 +155,7 @@ class CallLogCreate(BaseModel):
     company_id: uuid.UUID
     call_status: str
     notes: Optional[str] = None
+    next_call_date: Optional[date] = None
 
 class CallLogResponse(BaseModel):
     id: uuid.UUID

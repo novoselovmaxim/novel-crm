@@ -141,6 +141,8 @@ async def log_call(
     
     company.call_count += 1
     company.call_status = request.call_status
+    if request.next_call_date:
+        company.next_call_date = request.next_call_date
     from sqlalchemy.sql import func as sql_func
     company.last_called_at = sql_func.now()
     
