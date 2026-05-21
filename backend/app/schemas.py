@@ -157,6 +157,11 @@ class CallLogCreate(BaseModel):
     notes: Optional[str] = None
     next_call_date: Optional[date] = None
 
+class MeetingCreate(BaseModel):
+    meeting_date: date
+    meeting_time: str
+    notes: Optional[str] = None
+
 class CallLogResponse(BaseModel):
     id: uuid.UUID
     company_id: uuid.UUID

@@ -6,7 +6,7 @@ import uuid
 
 from ..database import get_db
 from ..models import User, Company, CallLog, AuditLog
-from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest
+from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, MeetingCreate
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
@@ -166,6 +166,32 @@ async def log_call(
     await db.commit()
     await db.refresh(call_log)
     return call_log
+
+@router.post("/{company_id}/meeting")
+async def schedule_meeting(
+    company_id: uuid.UUID,
+    request: MeetingCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    company.call_status = "meeting"
+    company.next_call_date = request.meeting_date
+    
+    call_log = CallLog(
+        company_id=company_id,
+        user_id=current_user.id,
+        call_status="meeting",
+        notes=f"Встреча: {request.meeting_date} {request.meeting_time}" + (f" - {request.notes}" if request.notes else "")
+    )
+    db.add(call_log)
+    await db.commit()
+    await db.refresh(call_log)
+    return {"status": "ok", "message": f"Meeting scheduled for {request.meeting_date} at {request.meeting_time}"}
 
 @router.patch("/{company_id}/assign", response_model=CompanyResponse)
 async def assign_company(
