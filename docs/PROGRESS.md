@@ -1,8 +1,8 @@
 # Novel CRM - Progress Tracker
 
-> **Last Updated:** 2026-05-21
-> **Current Phase:** Local Development Complete
-> **Next Step:** GitHub Repository + VPS Deployment
+> **Last Updated:** 2026-05-21 12:50 UTC
+> **Current Phase:** VPS Deployment Complete - Telegram Bot In Progress
+> **Next Step:** Telegram Bot Integration + Notifications
 
 ---
 
@@ -13,10 +13,11 @@
 | Planning | ✅ Complete | 100% |
 | Backend Development | ✅ Complete | 100% |
 | Frontend Development | ✅ Complete | 100% |
-| Docker & Local Testing | ⏳ Ready | Files created |
-| GitHub Repository | ⏳ Pending | 0% |
-| VPS Deployment | ⏳ Pending | 0% |
-| Data Import | ⏳ Pending | 0% |
+| Docker & Local Testing | ✅ Complete | 100% |
+| GitHub Repository | ✅ Complete | 100% |
+| VPS Deployment | ✅ Complete | 100% |
+| Data Import | ✅ Complete | 100% |
+| Telegram Bot | ⏳ In Progress | 30% |
 
 ---
 
@@ -48,22 +49,40 @@
 - [x] Task 10: Deploy scripts & nginx config
 - [x] Task 11: README documentation
 
+### Phase 4: VPS Deployment
+- [x] Deploy to VPS (80.87.111.142) at `/opt/novel-crm`
+- [x] Configure nginx for novel.maxnov.ru (via nginx-proxy container)
+- [x] Setup SSL certificate (Let's Encrypt via certbot)
+- [x] Import Excel data: **19,716 companies** loaded into PostgreSQL
+- [x] Build and deploy React frontend (FastAPI serves static files)
+- [x] Verify all endpoints: `/api/health`, `/api/auth/login`, `/api/dashboard/me`, `/api/companies`
+- [x] Admin user created: `admin@novel.ru` / `Admin123!`
+
+### Phase 5: Telegram Bot (In Progress)
+- [x] Created `backend/app/telegram_bot.py` with basic commands
+- [ ] Integrate with FastAPI backend
+- [ ] Add notification service (new leads, status changes)
+- [ ] Bind CRM users to Telegram accounts
+- [ ] Deploy bot container
+
 ---
 
 ## 🔄 Current Task
 
-**None** - Local development complete. Ready for GitHub + VPS deployment.
+**Telegram Bot Integration** - Building notification system and user binding.
 
 ---
 
 ## 📋 Remaining Tasks
 
-- [ ] Create GitHub repository
-- [ ] Push code to GitHub
-- [ ] Deploy to VPS (80.87.111.142)
-- [ ] Configure nginx for novel.maxnov.ru
-- [ ] Setup SSL certificate (certbot)
-- [ ] Import Excel data
+- [ ] Complete Telegram bot integration with FastAPI
+- [ ] Add notification endpoints to API
+- [ ] Implement user-Telegram binding flow
+- [ ] Deploy Telegram bot as separate container
+- [ ] Test end-to-end notifications
+- [ ] Add scheduled tasks/reminders
+- [ ] Performance optimization for 20k contacts
+- [ ] Backup/restore procedures
 
 ---
 
@@ -73,28 +92,46 @@
 - **Domain:** novel.maxnov.ru
 - **SSH:** root@80.87.111.142:22
 - **Deploy Path:** /opt/novel-crm
-- **CRM Port:** 3020
-- **Nginx:** Host-based, port 8443 (iptables 443→8443)
+- **CRM Port:** 3020 (internal 8000)
+- **Nginx:** nginx-proxy container, connected to `novel-crm_novel_net`
+- **Backend IP:** 172.19.0.3 (in novel-crm_novel_net)
+- **Database:** PostgreSQL 15, container `novel_crm_postgres`
+- **SSL:** Let's Encrypt, auto-renewal configured
 
 ---
 
-## 🚀 Next Commands
+## 🚀 Quick Commands
 
 ```bash
-# 1. Initialize git (if not done)
-cd /Users/maxnov/Prod/Novel
-git init
-git add .
-git commit -m "feat: initial CRM MVP - backend + frontend + docker"
+# SSH to VPS
+ssh -i /tmp/novel_vps_key root@80.87.111.142
 
-# 2. Create GitHub repo and push
-gh repo create novel-crm --public --source=. --remote=origin --push
+# Check services
+ssh root@80.87.111.142 "cd /opt/novel-crm && docker compose ps"
 
-# 3. Deploy to VPS
-scp -r . root@80.87.111.142:/opt/novel-crm
-ssh root@80.87.111.142 "cd /opt/novel-crm && cp deploy/.env.production .env && nano .env"
-ssh root@80.87.111.142 "cd /opt/novel-crm && bash deploy/deploy.sh"
+# View logs
+ssh root@80.87.111.142 "cd /opt/novel-crm && docker compose logs -f backend"
+
+# Test API
+curl -sk https://novel.maxnov.ru/api/health
+curl -sk -X POST https://novel.maxnov.ru/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@novel.ru","password":"Admin123!"}'
+
+# Frontend
+open https://novel.maxnov.ru
 ```
+
+---
+
+## 📊 Database Stats
+
+- **Total Companies:** 19,716
+- **New Companies:** 19,716
+- **In Progress:** 0
+- **Interested:** 0
+- **Refused:** 0
+- **Call Logs:** 0
 
 ---
 
