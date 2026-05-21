@@ -1,14 +1,7 @@
 import { create } from 'zustand'
+import { useEffect } from 'react'
 import api from '../api/client'
-
-interface User {
-  id: string
-  email: string
-  name: string | null
-  role: 'admin' | 'lead' | 'manager'
-  is_active: boolean
-  created_at: string
-}
+import { User } from '../types'
 
 interface AuthState {
   user: User | null
@@ -30,7 +23,7 @@ export const useAuth = create<AuthState>((set) => ({
       const { data } = await api.post('/auth/login', { email, password })
       localStorage.setItem('access_token', data.access_token)
       set({ token: data.access_token })
-      await fetchUser()
+      await useAuth.getState().fetchUser()
     } finally {
       set({ isLoading: false })
     }
@@ -56,7 +49,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchUser = useAuth((s) => s.fetchUser)
   const token = useAuth((s) => s.token)
   
-  React.useEffect(() => {
+  useEffect(() => {
     if (token) fetchUser()
   }, [token, fetchUser])
   
