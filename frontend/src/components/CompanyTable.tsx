@@ -19,6 +19,22 @@ const STATUSES = [
 
 const PAGE_SIZES = [30, 50, 100]
 
+const COLUMNS = [
+  { key: 'name', label: 'Компания', width: 'min-w-[200px]' },
+  { key: 'inn', label: 'ИНН', width: 'min-w-[110px]' },
+  { key: 'region', label: 'Регион', width: 'min-w-[140px]' },
+  { key: 'org_form', label: 'ОПФ', width: 'min-w-[80px]' },
+  { key: 'activity', label: 'Деятельность', width: 'min-w-[180px]' },
+  { key: 'website', label: 'Сайт', width: 'min-w-[120px]' },
+  { key: 'capital', label: 'Уст. капитал', width: 'min-w-[100px]' },
+  { key: 'revenue', label: 'Выручка', width: 'min-w-[100px]' },
+  { key: 'import', label: 'Импорт', width: 'min-w-[100px]' },
+  { key: 'export', label: 'Экспорт', width: 'min-w-[100px]' },
+  { key: 'director', label: 'Руководитель', width: 'min-w-[160px]' },
+  { key: 'calls', label: 'Попыток', width: 'min-w-[70px]' },
+  { key: 'status', label: 'Статус', width: 'min-w-[100px]' },
+]
+
 function RegionFilter({ value, onChange, regions }: { value: string; onChange: (v: string) => void; regions: string[] }) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState(value)
@@ -66,6 +82,36 @@ function RegionFilter({ value, onChange, regions }: { value: string; onChange: (
   )
 }
 
+function formatMoney(val: number | null | undefined) {
+  if (!val) return '—'
+  if (val >= 1e9) return `${(val / 1e9).toFixed(1)} млрд`
+  if (val >= 1e6) return `${(val / 1e6).toFixed(0)} млн`
+  if (val >= 1e3) return `${(val / 1e3).toFixed(0)} тыс`
+  return val.toLocaleString('ru-RU')
+}
+
+function getWebsite(c: Company) {
+  return c.website || c.focus_link || null
+}
+
+function getActivity(c: Company) {
+  return c.activity_main || c.niche || c.activity_code || '—'
+}
+
+function getOrgForm(c: Company) {
+  if (!c.org_form) return '—'
+  const map: Record<string, string> = {
+    'Общество с ограниченной ответственностью': 'ООО',
+    'Акционерное общество': 'АО',
+    'Открытое акционерное общество': 'ОАО',
+    'Закрытое акционерное общество': 'ЗАО',
+    'Индивидуальный предприниматель': 'ИП',
+    'Публичное акционерное общество': 'ПАО',
+    'Некоммерческая организация': 'НО',
+  }
+  return map[c.org_form] || c.org_form.substring(0, 10)
+}
+
 export default function CompanyTable() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -100,21 +146,13 @@ export default function CompanyTable() {
     fetchCompanies()
   }, [page, pageSize, search, statusFilter, regionFilter])
 
-  const parentRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
     count: companies.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollRef.current,
     estimateSize: () => 44,
     overscan: 5,
   })
-
-  const formatRevenue = (val: number | null) => {
-    if (!val) return '—'
-    if (val >= 1e9) return `${(val / 1e9).toFixed(1)} млрд`
-    if (val >= 1e6) return `${(val / 1e6).toFixed(0)} млн`
-    if (val >= 1e3) return `${(val / 1e3).toFixed(0)} тыс`
-    return val.toString()
-  }
 
   const clearFilters = () => {
     setSearch('')
@@ -130,7 +168,7 @@ export default function CompanyTable() {
 
   return (
     <div className="flex h-full">
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <div className="p-4 border-b border-muted/10 space-y-3">
           <input
             type="text"
@@ -158,43 +196,51 @@ export default function CompanyTable() {
           </div>
         </div>
         
-        <div className="grid grid-cols-12 gap-2 px-4 py-2 text-xs font-medium text-muted border-b border-muted/10">
-          <div className="col-span-4">Компания</div>
-          <div className="col-span-1">ИНН</div>
-          <div className="col-span-2">Регион</div>
-          <div className="col-span-2">Деятельность</div>
-          <div className="col-span-1">Выручка</div>
-          <div className="col-span-1">Попыток</div>
-          <div className="col-span-1">Статус</div>
+        <div className="overflow-x-auto">
+          <div className="inline-flex min-w-full">
+            {COLUMNS.map(col => (
+              <div key={col.key} className={`${col.width} px-3 py-2 text-xs font-medium text-muted border-r border-muted/5 shrink-0`}>
+                {col.label}
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div ref={parentRef} className="flex-1 overflow-auto">
+        <div ref={scrollRef} className="flex-1 overflow-auto">
           <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {
-              const company = companies[virtualRow.index]
+              const c = companies[virtualRow.index]
               return (
                 <div
-                  key={company.id}
+                  key={c.id}
                   ref={virtualizer.measureElement}
                   data-index={virtualRow.index}
-                  onClick={() => setSelectedCompany(company)}
-                  className="absolute inset-x-0 grid grid-cols-12 gap-2 px-4 items-center h-11 hover:bg-surfaceHover cursor-pointer border-b border-muted/5"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  onClick={() => setSelectedCompany(c)}
+                  className="absolute inset-x-0 flex hover:bg-surfaceHover cursor-pointer border-b border-muted/5"
+                  style={{ transform: `translateY(${virtualRow.start}px)`, height: '44px' }}
                 >
-                  <div className="col-span-4 font-medium truncate" title={company.name}>{company.name}</div>
-                  <div className="col-span-1 font-mono text-xs truncate" title={company.inn}>{company.inn}</div>
-                  <div className="col-span-2 text-muted truncate" title={company.region || ''}>{company.region || '—'}</div>
-                  <div className="col-span-2 text-muted truncate" title={company.activity_main || ''}>{company.activity_main || '—'}</div>
-                  <div className="col-span-1 truncate">{formatRevenue(company.revenue)}</div>
-                  <div className="col-span-1 text-center">{company.call_count}</div>
-                  <div className="col-span-1"><StatusBadge status={company.call_status} /></div>
+                  <div className={`${COLUMNS[0].width} px-3 font-medium truncate shrink-0`} title={c.name}>{c.name}</div>
+                  <div className={`${COLUMNS[1].width} px-3 font-mono text-xs truncate shrink-0`} title={c.inn}>{c.inn}</div>
+                  <div className={`${COLUMNS[2].width} px-3 text-muted truncate shrink-0`} title={c.region || ''}>{c.region || '—'}</div>
+                  <div className={`${COLUMNS[3].width} px-3 text-muted text-xs truncate shrink-0`} title={c.org_form || ''}>{getOrgForm(c)}</div>
+                  <div className={`${COLUMNS[4].width} px-3 text-muted truncate shrink-0`} title={getActivity(c)}>{getActivity(c)}</div>
+                  <div className={`${COLUMNS[5].width} px-3 text-accent truncate shrink-0`} title={getWebsite(c) || ''}>
+                    {getWebsite(c) ? <a href={getWebsite(c)!.startsWith('http') ? getWebsite(c)! : `https://${getWebsite(c)}`} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} className="hover:underline">{getWebsite(c)!.replace(/^https?:\/\//, '').substring(0, 20)}</a> : '—'}
+                  </div>
+                  <div className={`${COLUMNS[6].width} px-3 truncate shrink-0`}>{formatMoney(c.capital)}</div>
+                  <div className={`${COLUMNS[7].width} px-3 truncate shrink-0`}>{formatMoney(c.revenue)}</div>
+                  <div className={`${COLUMNS[8].width} px-3 truncate shrink-0`}>{c.import_turnover || '—'}</div>
+                  <div className={`${COLUMNS[9].width} px-3 truncate shrink-0`}>{c.export_turnover || '—'}</div>
+                  <div className={`${COLUMNS[10].width} px-3 truncate shrink-0`} title={c.director || ''}>{c.director || '—'}</div>
+                  <div className={`${COLUMNS[11].width} px-3 text-center shrink-0`}>{c.call_count}</div>
+                  <div className={`${COLUMNS[12].width} px-3 shrink-0`}><StatusBadge status={c.call_status} /></div>
                 </div>
               )
             })}
           </div>
         </div>
 
-        <div className="p-3 border-t border-muted/10 flex items-center justify-between text-sm text-muted">
+        <div className="p-3 border-t border-muted/10 flex items-center justify-between text-sm text-muted shrink-0">
           <div className="flex items-center gap-4">
             <span>Всего: {total}</span>
             <span>Страниц: {totalPages}</span>
