@@ -1,27 +1,57 @@
 #!/bin/bash
 set -e
 
-echo "=== Novel CRM Deployment ==="
+echo "🚀 Deploying Novel CRM to VPS..."
 
-if [ ! -d "/opt/novel-crm" ]; then
-    echo "Error: /opt/novel-crm not found."
-    exit 1
-fi
+VPS_USER="root"
+VPS_HOST="80.87.111.142"
+VPS_KEY="/tmp/novel_vps_key"
+VPS_DIR="/opt/novel-crm"
+SSH_CMD="ssh -i $VPS_KEY -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST"
 
-cd /opt/novel-crm
+echo "📦 Building frontend..."
+cd frontend && npm run build 2>&1 | tail -3
+cd ..
 
-if [ ! -f ".env" ]; then
-    echo "Error: .env not found. Copy from .env.example and fill in values."
-    exit 1
-fi
+echo "📤 Pushing to GitHub..."
+git add -A
+git commit -m "deploy: $(date '+%Y-%m-%d %H:%M')" 2>/dev/null || echo "No changes to commit"
+git push
 
-echo "Building and starting containers..."
-docker compose down
-docker compose up -d --build
+echo "🔄 Pulling on VPS..."
+$SSH_CMD "cd $VPS_DIR && git pull origin main 2>&1"
 
-echo "Waiting for PostgreSQL..."
+echo "📦 Copying frontend dist to VPS..."
+tar czf /tmp/frontend-dist.tar.gz -C frontend dist
+scp -i $VPS_KEY -o StrictHostKeyChecking=no /tmp/frontend-dist.tar.gz $VPS_USER@$VPS_HOST:/tmp/
+$SSH_CMD "
+cd $VPS_DIR
+mkdir -p frontend/dist
+tar xzf /tmp/frontend-dist.tar.gz -C frontend/
+rm -f /tmp/frontend-dist.tar.gz
+"
+
+echo "🐳 Rebuilding backend..."
+$SSH_CMD "cd $VPS_DIR && docker compose build backend 2>&1 | tail -5"
+
+echo "🔄 Restarting services..."
+$SSH_CMD "cd $VPS_DIR && docker compose up -d 2>&1 | tail -3"
+
+echo "⏳ Waiting for startup..."
 sleep 5
 
-echo "=== Deployment complete ==="
-echo "Application running at: https://novel.maxnov.ru"
-echo "Backend API: http://localhost:3020/api/docs"
+echo "✅ Testing deployment..."
+$SSH_CMD "
+echo '--- Frontend ---'
+curl -sk https://novel.maxnov.ru/ | head -1
+echo ''
+echo '--- API ---'
+curl -sk https://novel.maxnov.ru/api/health
+echo ''
+echo '--- Assets ---'
+curl -sk -o /dev/null -w 'JS: %{http_code} | CSS: %{http_code}\n' \
+  https://novel.maxnov.ru/assets/index-*.js \
+  https://novel.maxnov.ru/assets/index-*.css
+"
+
+echo "🎉 Deployment complete!"
