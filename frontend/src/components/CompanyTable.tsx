@@ -3,21 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import api from '../api/client'
 import StatusBadge from './StatusBadge'
 import CompanyCard from './CompanyCard'
-
-interface Company {
-  id: string
-  name: string
-  inn: string
-  region: string | null
-  phone: string | null
-  website: string | null
-  call_status: string
-  call_count: number
-  next_call_date: string | null
-  assigned_to: string | null
-  revenue: number | null
-  activity_main: string | null
-}
+import { Company } from '../types'
 
 export default function CompanyTable() {
   const [companies, setCompanies] = useState<Company[]>([])

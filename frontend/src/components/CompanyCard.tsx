@@ -1,19 +1,6 @@
 import { useState } from 'react'
 import api from '../api/client'
-
-interface Company {
-  id: string
-  name: string
-  inn: string
-  phone: string | null
-  email: string | null
-  website: string | null
-  region: string | null
-  call_status: string
-  call_count: number
-  comment_static: string | null
-  next_call_date: string | null
-}
+import { Company } from '../types'
 
 const statuses = [
   { value: 'new', label: 'Новый', color: 'bg-gray-500' },
