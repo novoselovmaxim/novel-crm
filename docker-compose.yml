@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: novel_crm_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-novel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-novel_secret}
+      POSTGRES_DB: ${DB_NAME:-novel_crm}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - novel_net
+
+  backend:
+    build: ./backend
+    container_name: novel_crm_backend
+    environment:
+      DB_URL: postgresql+asyncpg://${DB_USER:-novel}:${DB_PASSWORD:-novel_secret}@postgres:5432/${DB_NAME:-novel_crm}
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_EXPIRE_MINUTES: 15
+      JWT_REFRESH_EXPIRE_DAYS: 30
+    ports:
+      - "3020:8000"
+    depends_on:
+      - postgres
+    networks:
+      - novel_net
+
+volumes:
+  pgdata:
+
+networks:
+  novel_net:
+    driver: bridge
