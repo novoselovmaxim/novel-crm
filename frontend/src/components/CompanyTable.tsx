@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import api from '../api/client'
 import StatusBadge from './StatusBadge'
@@ -19,28 +19,31 @@ const STATUSES = [
 
 const PAGE_SIZES = [30, 50, 100]
 
-const COLUMNS = [
-  { key: 'name', label: 'Компания', width: 'min-w-[200px]' },
-  { key: 'inn', label: 'ИНН', width: 'min-w-[110px]' },
-  { key: 'region', label: 'Регион', width: 'min-w-[140px]' },
-  { key: 'org_form', label: 'ОПФ', width: 'min-w-[80px]' },
-  { key: 'activity', label: 'Деятельность', width: 'min-w-[180px]' },
-  { key: 'website', label: 'Сайт', width: 'min-w-[120px]' },
-  { key: 'capital', label: 'Уст. капитал', width: 'min-w-[100px]' },
-  { key: 'revenue', label: 'Выручка', width: 'min-w-[100px]' },
-  { key: 'import', label: 'Импорт', width: 'min-w-[100px]' },
-  { key: 'export', label: 'Экспорт', width: 'min-w-[100px]' },
-  { key: 'director', label: 'Руководитель', width: 'min-w-[160px]' },
-  { key: 'calls', label: 'Попыток', width: 'min-w-[70px]' },
-  { key: 'status', label: 'Статус', width: 'min-w-[100px]' },
+const COL_DEFS = [
+  { key: 'name', label: 'Компания', w: 220 },
+  { key: 'inn', label: 'ИНН', w: 120 },
+  { key: 'region', label: 'Регион', w: 160 },
+  { key: 'org_form', label: 'ОПФ', w: 70 },
+  { key: 'activity', label: 'Вид деятельности', w: 200 },
+  { key: 'website', label: 'Сайт', w: 140 },
+  { key: 'capital', label: 'Уст. капитал', w: 110 },
+  { key: 'revenue', label: 'Выручка', w: 110 },
+  { key: 'import', label: 'Об. импорт', w: 110 },
+  { key: 'export', label: 'Об. экспорт', w: 110 },
+  { key: 'director', label: 'Руководитель', w: 180 },
+  { key: 'calls', label: 'Попыток', w: 70 },
+  { key: 'status', label: 'Статус', w: 110 },
 ]
+
+const TOTAL_W = COL_DEFS.reduce((s, c) => s + c.w, 0)
 
 function RegionFilter({ value, onChange, regions }: { value: string; onChange: (v: string) => void; regions: string[] }) {
   const [open, setOpen] = useState(false)
-  const [input, setInput] = useState(value)
+  const [query, setQuery] = useState(value)
   const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = regions.filter(r => r.toLowerCase().includes(input.toLowerCase())).slice(0, 50)
+  const filtered = regions.filter(r => r.toLowerCase().includes(query.toLowerCase())).slice(0, 80)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -50,28 +53,34 @@ function RegionFilter({ value, onChange, regions }: { value: string; onChange: (
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const select = (r: string) => {
-    setInput(r)
+  useEffect(() => {
+    setQuery(value)
+  }, [value])
+
+  const select = useCallback((r: string) => {
+    setQuery(r)
     onChange(r)
     setOpen(false)
-  }
+    inputRef.current?.blur()
+  }, [onChange])
 
   return (
     <div ref={ref} className="relative">
       <input
-        value={input}
-        onChange={(e) => { setInput(e.target.value); onChange(e.target.value) }}
+        ref={inputRef}
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
         placeholder="Регион..."
-        className="w-48 px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        className="w-44 px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
       {open && filtered.length > 0 && (
-        <div className="absolute top-full left-0 mt-1 w-64 max-h-60 overflow-auto bg-surface border border-muted/20 rounded-lg shadow-xl z-50">
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-auto bg-surface border border-muted/20 rounded-lg shadow-xl z-50">
           {filtered.map(r => (
             <button
               key={r}
               onClick={() => select(r)}
-              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surfaceHover ${r === value ? 'text-accent' : ''}`}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surfaceHover ${r === value ? 'text-accent font-medium' : ''}`}
             >
               {r}
             </button>
@@ -147,12 +156,22 @@ export default function CompanyTable() {
   }, [page, pageSize, search, statusFilter, regionFilter])
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
     count: companies.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 44,
+    estimateSize: () => 40,
     overscan: 5,
   })
+
+  useEffect(() => {
+    const el = scrollRef.current
+    const header = headerRef.current
+    if (!el || !header) return
+    const handler = () => { header.scrollLeft = el.scrollLeft }
+    el.addEventListener('scroll', handler)
+    return () => el.removeEventListener('scroll', handler)
+  }, [])
 
   const clearFilters = () => {
     setSearch('')
@@ -167,47 +186,51 @@ export default function CompanyTable() {
   if (loading) return <div className="flex items-center justify-center h-64">Загрузка...</div>
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="p-4 border-b border-muted/10 space-y-3">
-          <input
-            type="text"
-            placeholder="Поиск по названию, ИНН..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            className="w-full px-4 py-2 bg-bg border border-muted/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <div className="flex gap-3 items-center">
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-              className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {STATUSES.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-            <RegionFilter value={regionFilter} onChange={(v) => { setRegionFilter(v); setPage(1) }} regions={regions} />
-            {hasFilters && (
-              <button onClick={clearFilters} className="px-3 py-1.5 text-sm text-accent hover:underline">
-                Сбросить
-              </button>
-            )}
-          </div>
+    <div className="flex h-full flex-col">
+      {/* Filters */}
+      <div className="p-3 border-b border-muted/10 space-y-2 shrink-0">
+        <input
+          type="text"
+          placeholder="Поиск по названию, ИНН..."
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+          className="w-full px-4 py-2 bg-bg border border-muted/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        <div className="flex gap-3 items-center">
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
+            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            {STATUSES.map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          <RegionFilter value={regionFilter} onChange={(v) => { setRegionFilter(v); setPage(1) }} regions={regions} />
+          {hasFilters && (
+            <button onClick={clearFilters} className="px-3 py-1.5 text-sm text-accent hover:underline">
+              Сбросить
+            </button>
+          )}
         </div>
-        
-        <div className="overflow-x-auto">
-          <div className="inline-flex min-w-full">
-            {COLUMNS.map(col => (
-              <div key={col.key} className={`${col.width} px-3 py-2 text-xs font-medium text-muted border-r border-muted/5 shrink-0`}>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Header */}
+        <div ref={headerRef} className="overflow-x-auto overflow-y-hidden shrink-0" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex" style={{ width: TOTAL_W, minWidth: TOTAL_W }}>
+            {COL_DEFS.map(col => (
+              <div key={col.key} className="px-3 py-2 text-xs font-medium text-muted border-r border-muted/5 truncate shrink-0" style={{ width: col.w }}>
                 {col.label}
               </div>
             ))}
           </div>
         </div>
 
+        {/* Body */}
         <div ref={scrollRef} className="flex-1 overflow-auto">
-          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: TOTAL_W, minWidth: TOTAL_W }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {
               const c = companies[virtualRow.index]
               return (
@@ -216,30 +239,35 @@ export default function CompanyTable() {
                   ref={virtualizer.measureElement}
                   data-index={virtualRow.index}
                   onClick={() => setSelectedCompany(c)}
-                  className="absolute inset-x-0 flex hover:bg-surfaceHover cursor-pointer border-b border-muted/5"
-                  style={{ transform: `translateY(${virtualRow.start}px)`, height: '44px' }}
+                  className="absolute left-0 right-0 flex hover:bg-surfaceHover cursor-pointer border-b border-muted/5"
+                  style={{ transform: `translateY(${virtualRow.start}px)`, height: '40px' }}
                 >
-                  <div className={`${COLUMNS[0].width} px-3 font-medium truncate shrink-0`} title={c.name}>{c.name}</div>
-                  <div className={`${COLUMNS[1].width} px-3 font-mono text-xs truncate shrink-0`} title={c.inn}>{c.inn}</div>
-                  <div className={`${COLUMNS[2].width} px-3 text-muted truncate shrink-0`} title={c.region || ''}>{c.region || '—'}</div>
-                  <div className={`${COLUMNS[3].width} px-3 text-muted text-xs truncate shrink-0`} title={c.org_form || ''}>{getOrgForm(c)}</div>
-                  <div className={`${COLUMNS[4].width} px-3 text-muted truncate shrink-0`} title={getActivity(c)}>{getActivity(c)}</div>
-                  <div className={`${COLUMNS[5].width} px-3 text-accent truncate shrink-0`} title={getWebsite(c) || ''}>
-                    {getWebsite(c) ? <a href={getWebsite(c)!.startsWith('http') ? getWebsite(c)! : `https://${getWebsite(c)}`} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} className="hover:underline">{getWebsite(c)!.replace(/^https?:\/\//, '').substring(0, 20)}</a> : '—'}
+                  <div className="px-3 font-medium truncate shrink-0 flex items-center" style={{ width: COL_DEFS[0].w }} title={c.name}>{c.name}</div>
+                  <div className="px-3 font-mono text-xs truncate shrink-0 flex items-center" style={{ width: COL_DEFS[1].w }} title={c.inn}>{c.inn}</div>
+                  <div className="px-3 text-muted truncate shrink-0 flex items-center" style={{ width: COL_DEFS[2].w }} title={c.region || ''}>{c.region || '—'}</div>
+                  <div className="px-3 text-muted text-xs truncate shrink-0 flex items-center" style={{ width: COL_DEFS[3].w }} title={c.org_form || ''}>{getOrgForm(c)}</div>
+                  <div className="px-3 text-muted truncate shrink-0 flex items-center" style={{ width: COL_DEFS[4].w }} title={getActivity(c)}>{getActivity(c)}</div>
+                  <div className="px-3 text-accent truncate shrink-0 flex items-center" style={{ width: COL_DEFS[5].w }} title={getWebsite(c) || ''}>
+                    {getWebsite(c) ? (
+                      <a href={getWebsite(c)!.startsWith('http') ? getWebsite(c)! : `https://${getWebsite(c)}`} target="_blank" rel="noopener" onClick={e => e.stopPropagation()} className="hover:underline truncate">
+                        {getWebsite(c)!.replace(/^https?:\/\//, '').substring(0, 22)}
+                      </a>
+                    ) : '—'}
                   </div>
-                  <div className={`${COLUMNS[6].width} px-3 truncate shrink-0`}>{formatMoney(c.capital)}</div>
-                  <div className={`${COLUMNS[7].width} px-3 truncate shrink-0`}>{formatMoney(c.revenue)}</div>
-                  <div className={`${COLUMNS[8].width} px-3 truncate shrink-0`}>{c.import_turnover || '—'}</div>
-                  <div className={`${COLUMNS[9].width} px-3 truncate shrink-0`}>{c.export_turnover || '—'}</div>
-                  <div className={`${COLUMNS[10].width} px-3 truncate shrink-0`} title={c.director || ''}>{c.director || '—'}</div>
-                  <div className={`${COLUMNS[11].width} px-3 text-center shrink-0`}>{c.call_count}</div>
-                  <div className={`${COLUMNS[12].width} px-3 shrink-0`}><StatusBadge status={c.call_status} /></div>
+                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[6].w }}>{formatMoney(c.capital)}</div>
+                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[7].w }}>{formatMoney(c.revenue)}</div>
+                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[8].w }}>{c.import_turnover || '—'}</div>
+                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[9].w }}>{c.export_turnover || '—'}</div>
+                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[10].w }} title={c.director || ''}>{c.director || '—'}</div>
+                  <div className="px-3 text-center shrink-0 flex items-center justify-center" style={{ width: COL_DEFS[11].w }}>{c.call_count}</div>
+                  <div className="px-3 shrink-0 flex items-center" style={{ width: COL_DEFS[12].w }}><StatusBadge status={c.call_status} /></div>
                 </div>
               )
             })}
           </div>
         </div>
 
+        {/* Pagination */}
         <div className="p-3 border-t border-muted/10 flex items-center justify-between text-sm text-muted shrink-0">
           <div className="flex items-center gap-4">
             <span>Всего: {total}</span>
