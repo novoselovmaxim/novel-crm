@@ -17,6 +17,55 @@ const STATUSES = [
   { value: 'refused', label: 'Отказ' },
 ]
 
+const PAGE_SIZES = [30, 50, 100]
+
+function RegionFilter({ value, onChange, regions }: { value: string; onChange: (v: string) => void; regions: string[] }) {
+  const [open, setOpen] = useState(false)
+  const [input, setInput] = useState(value)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const filtered = regions.filter(r => r.toLowerCase().includes(input.toLowerCase())).slice(0, 50)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const select = (r: string) => {
+    setInput(r)
+    onChange(r)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={input}
+        onChange={(e) => { setInput(e.target.value); onChange(e.target.value) }}
+        onFocus={() => setOpen(true)}
+        placeholder="Регион..."
+        className="w-48 px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute top-full left-0 mt-1 w-64 max-h-60 overflow-auto bg-surface border border-muted/20 rounded-lg shadow-xl z-50">
+          {filtered.map(r => (
+            <button
+              key={r}
+              onClick={() => select(r)}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surfaceHover ${r === value ? 'text-accent' : ''}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CompanyTable() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,13 +75,12 @@ export default function CompanyTable() {
   const [regions, setRegions] = useState<string[]>([])
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
-    api.get('/companies', { params: { page: 1, page_size: 1000 } }).then(({ data }) => {
-      const unique = [...new Set((data.items as Company[]).map((c) => c.region).filter(Boolean))] as string[]
-      unique.sort()
-      setRegions(unique)
+    api.get('/companies/regions').then(({ data }) => {
+      setRegions(data.regions || [])
     })
   }, [])
 
@@ -41,7 +89,7 @@ export default function CompanyTable() {
       setLoading(true)
       try {
         const { data } = await api.get('/companies', {
-          params: { page, page_size: 50, search, status: statusFilter || undefined, region: regionFilter || undefined }
+          params: { page, page_size: pageSize, search, status: statusFilter || undefined, region: regionFilter || undefined }
         })
         setCompanies(data.items)
         setTotal(data.total)
@@ -50,7 +98,7 @@ export default function CompanyTable() {
       }
     }
     fetchCompanies()
-  }, [page, search, statusFilter, regionFilter])
+  }, [page, pageSize, search, statusFilter, regionFilter])
 
   const parentRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -76,6 +124,7 @@ export default function CompanyTable() {
   }
 
   const hasFilters = search || statusFilter || regionFilter
+  const totalPages = Math.ceil(total / pageSize)
 
   if (loading) return <div className="flex items-center justify-center h-64">Загрузка...</div>
 
@@ -100,16 +149,7 @@ export default function CompanyTable() {
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
-            <select
-              value={regionFilter}
-              onChange={(e) => { setRegionFilter(e.target.value); setPage(1) }}
-              className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Все регионы</option>
-              {regions.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+            <RegionFilter value={regionFilter} onChange={(v) => { setRegionFilter(v); setPage(1) }} regions={regions} />
             {hasFilters && (
               <button onClick={clearFilters} className="px-3 py-1.5 text-sm text-accent hover:underline">
                 Сбросить
@@ -155,13 +195,31 @@ export default function CompanyTable() {
         </div>
 
         <div className="p-3 border-t border-muted/10 flex items-center justify-between text-sm text-muted">
-          <span>Всего: {total}</span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-4">
+            <span>Всего: {total}</span>
+            <span>Страниц: {totalPages}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs">Показать:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+                className="px-2 py-1 bg-bg border border-muted/20 rounded text-xs focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                {PAGE_SIZES.map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 items-center">
+            <button onClick={() => setPage(1)} disabled={page === 1} className="px-3 py-1 bg-surface rounded disabled:opacity-50">
+              В начало
+            </button>
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 bg-surface rounded disabled:opacity-50">
               Назад
             </button>
-            <span className="px-3 py-1">Стр. {page}</span>
-            <button onClick={() => setPage(p => p + 1)} disabled={page * 50 >= total} className="px-3 py-1 bg-surface rounded disabled:opacity-50">
+            <span className="px-3 py-1">Стр. {page} / {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="px-3 py-1 bg-surface rounded disabled:opacity-50">
               Вперёд
             </button>
           </div>
