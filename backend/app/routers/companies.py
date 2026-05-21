@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, distinct
 from typing import Optional
 import uuid
 
@@ -10,6 +10,16 @@ from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyList
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
+
+@router.get("/regions")
+async def list_regions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(distinct(Company.region)).where(Company.is_deleted == False, Company.region != None).order_by(Company.region)
+    result = await db.execute(query)
+    regions = [r[0] for r in result.all() if r[0]]
+    return {"regions": regions}
 
 @router.get("", response_model=CompanyListResponse)
 async def list_companies(
