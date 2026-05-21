@@ -4,19 +4,47 @@ export interface Company {
   inn: string
   ogrn?: string | null
   kpp?: string | null
+  org_form?: string | null
+  reg_date?: string | null
   region: string | null
   address?: string | null
+  tax_office?: string | null
   phone: string | null
   email: string | null
   website: string | null
+  linkedin?: string | null
   director?: string | null
+  director_title?: string | null
+  director_inn?: string | null
+  fin_director?: string | null
+  contact_person?: string | null
+  citizenship?: string | null
   activity_main: string | null
   activity_code?: string | null
+  activity_other?: string | null
+  niche?: string | null
+  supply_subject?: string | null
   revenue: number | null
+  profit?: number | null
   employees?: number | null
+  capital?: number | null
+  import_turnover?: string | null
+  export_turnover?: string | null
+  import_confirmed?: string | null
+  foreign_payments?: string | null
+  arbitrage?: string | null
+  licenses?: string | null
+  registries?: string | null
+  msp?: string | null
+  size?: string | null
+  segment?: string | null
+  priority?: string | null
+  focus_link?: string | null
+  source_orig?: string | null
+  branches?: string | null
+  comment_static: string | null
   call_status: string
   call_count: number
-  comment_static: string | null
   next_call_date: string | null
   assigned_to: string | null
   last_called_at?: string | null
