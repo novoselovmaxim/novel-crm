@@ -119,11 +119,6 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const unusedFields = fields.filter(f => {
-    const mapped = Object.values(mapping)
-    return !mapped.includes(f.key) || f.key === 'inn'
-  })
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="w-full max-w-2xl bg-surface rounded-2xl border border-muted/10 p-6 mx-4 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>

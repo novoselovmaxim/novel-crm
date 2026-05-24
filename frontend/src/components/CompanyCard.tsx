@@ -334,7 +334,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
             <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 3); setNextCallDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 text-xs bg-bg rounded border border-muted/20 hover:bg-muted/20">+3</button>
             <button onClick={() => { const d = new Date(); d.setDate(d.getDate() + 7); setNextCallDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 text-xs bg-bg rounded border border-muted/20 hover:bg-muted/20">+7</button>
           </div>
-          <button onClick={handleSaveCall} disabled={saving} className="w-full py-2 mt-3 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
+          <button onClick={() => handleSaveCall()} disabled={saving} className="w-full py-2 mt-3 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
             {saving ? 'Сохранение...' : 'Сохранить звонок'}
           </button>
         </Section>
