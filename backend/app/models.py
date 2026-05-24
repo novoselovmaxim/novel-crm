@@ -141,6 +141,12 @@ class ImportSource(Base):
     column_mapping = Column(JSONB, nullable=True)
     template_name = Column(String, nullable=True)
     status = Column(String, default="imported")
+    total_rows = Column(Integer, default=0)
+    processed_rows = Column(Integer, default=0)
+    added_count = Column(Integer, default=0)
+    updated_count = Column(Integer, default=0)
+    skipped_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
 
 
 class ImportSourceData(Base):

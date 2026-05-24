@@ -9,6 +9,7 @@ interface ImportField {
 
 interface UploadPreview {
   file_id: string
+  original_filename: string
   sheets: string[]
   columns: string[]
   sample_rows: (string | null)[][]
@@ -22,11 +23,21 @@ interface ImportTemplate {
   mapping: Record<string, string>
 }
 
-interface ImportResult {
-  added: number
-  updated: number
-  skipped: number
-  total: number
+interface ImportRunCreated {
+  source_id: string
+  status: string
+  total_rows: number
+}
+
+interface ImportRunStatus {
+  source_id: string
+  status: string
+  total_rows: number
+  processed_rows: number
+  added_count: number
+  updated_count: number
+  skipped_count: number
+  error_message: string | null
 }
 
 type Step = 'idle' | 'mapping' | 'running' | 'done'
@@ -46,12 +57,19 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
   const [templateName, setTemplateName] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
 
-  const [result, setResult] = useState<ImportResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [runStatus, setRunStatus] = useState<ImportRunStatus | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     api.get('/import/fields').then(({ data }) => setFields(data))
     api.get('/import/templates').then(({ data }) => setTemplates(data))
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
   }, [])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -98,26 +116,43 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
     } catch { }
   }
 
-  const runImport = async () => {
+  const startImport = async () => {
     if (!preview) return
     setStep('running')
     setError(null)
+    setRunStatus(null)
     const tmpl = templates.find(t => t.id === selectedTemplateId)
     try {
-      const { data } = await api.post<ImportResult>('/import/run', {
+      const { data } = await api.post<ImportRunCreated>('/import/run', {
         file_id: preview.file_id,
         sheet,
         mapping,
         original_filename: file?.name || 'import',
         template_name: tmpl?.name || null,
       })
-      setResult(data)
-      setStep('done')
+      pollRef.current = setInterval(async () => {
+        try {
+          const { data: status } = await api.get<ImportRunStatus>(`/import/run/${data.source_id}`)
+          setRunStatus(status)
+          if (status.status === 'imported' || status.status === 'error') {
+            if (pollRef.current) clearInterval(pollRef.current)
+            setStep('done')
+          }
+        } catch {
+          if (pollRef.current) clearInterval(pollRef.current)
+          setError('Status check failed')
+          setStep('mapping')
+        }
+      }, 1000)
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Import failed')
       setStep('mapping')
     }
   }
+
+  const progress = runStatus && runStatus.total_rows > 0
+    ? Math.round((runStatus.processed_rows / runStatus.total_rows) * 100)
+    : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -243,7 +278,7 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
               <button onClick={() => { setFile(null); setPreview(null); setStep('idle') }} className="flex-1 py-2.5 rounded-xl border border-muted/20 text-muted hover:text-text transition-colors text-sm">
                 Назад
               </button>
-              <button onClick={runImport} className="flex-1 py-2.5 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition-colors text-sm">
+              <button onClick={startImport} className="flex-1 py-2.5 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition-colors text-sm">
                 Запустить импорт
               </button>
             </div>
@@ -251,24 +286,47 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
         )}
 
         {step === 'running' && (
-          <div className="flex flex-col items-center py-12">
+          <div className="flex flex-col items-center py-8">
             <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm text-muted">Импорт выполняется...</p>
-            <p className="text-xs text-muted/60 mt-1">Пожалуйста, подождите</p>
+            <p className="text-sm text-muted mb-1">Импорт выполняется...</p>
+            {runStatus && runStatus.total_rows > 0 && (
+              <>
+                <div className="w-full max-w-xs bg-bg rounded-full h-2 mb-3">
+                  <div
+                    className="bg-accent h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(progress, 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted/80">
+                  {runStatus.processed_rows} / {runStatus.total_rows} строк
+                  {runStatus.added_count > 0 && ` · +${runStatus.added_count}`}
+                  {runStatus.updated_count > 0 && ` · ~${runStatus.updated_count}`}
+                  {runStatus.skipped_count > 0 && ` · -${runStatus.skipped_count}`}
+                </p>
+              </>
+            )}
+            {error && <p className="mt-3 text-sm text-error">{error}</p>}
           </div>
         )}
 
-        {step === 'done' && result && (
+        {step === 'done' && runStatus && (
           <div>
-            <div className="p-4 bg-success/10 border border-success/20 rounded-xl mb-4">
-              <p className="text-success font-medium mb-2">Импорт завершён</p>
-              <div className="text-sm space-y-1 text-muted">
-                <p>Добавлено компаний: <span className="text-text font-medium">{result.added}</span></p>
-                <p>Обновлено: <span className="text-text font-medium">{result.updated}</span></p>
-                <p>Пропущено (без ИНН): <span className="text-text font-medium">{result.skipped}</span></p>
-                <p className="text-xs text-muted/60">Всего строк: {result.total}</p>
+            {runStatus.status === 'error' ? (
+              <div className="p-4 bg-error/10 border border-error/20 rounded-xl mb-4">
+                <p className="text-error font-medium mb-2">Ошибка импорта</p>
+                <p className="text-sm text-muted">{runStatus.error_message || 'Неизвестная ошибка'}</p>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 bg-success/10 border border-success/20 rounded-xl mb-4">
+                <p className="text-success font-medium mb-2">Импорт завершён</p>
+                <div className="text-sm space-y-1 text-muted">
+                  <p>Добавлено компаний: <span className="text-text font-medium">{runStatus.added_count}</span></p>
+                  <p>Обновлено: <span className="text-text font-medium">{runStatus.updated_count}</span></p>
+                  <p>Пропущено (без ИНН): <span className="text-text font-medium">{runStatus.skipped_count}</span></p>
+                  <p className="text-xs text-muted/60">Всего строк: {runStatus.total_rows}</p>
+                </div>
+              </div>
+            )}
             <button onClick={onClose} className="w-full py-2.5 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition-colors">
               Готово
             </button>
