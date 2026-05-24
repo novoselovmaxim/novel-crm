@@ -47,3 +47,11 @@ async def register(
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.get("/managers", response_model=list[UserResponse])
+async def list_managers(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.role == "manager", User.is_active == True))
+    return result.scalars().all()

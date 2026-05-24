@@ -3,7 +3,14 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import api from '../api/client'
 import StatusBadge from './StatusBadge'
 import CompanyCard from './CompanyCard'
-import { Company } from '../types'
+import CalendarModal from './CalendarModal'
+import { Company, User } from '../types'
+import { useAuth } from '../store/auth'
+
+interface ImportSource {
+  id: string
+  original_filename: string
+}
 
 const STATUSES = [
   { value: '', label: 'Все статусы' },
@@ -28,18 +35,19 @@ const COL_DEFS = [
   { key: 'website', label: 'Сайт', w: 140 },
   { key: 'capital', label: 'Уст. капитал', w: 110 },
   { key: 'revenue', label: 'Выручка', w: 110 },
-  { key: 'import', label: 'Об. импорт', w: 110 },
-  { key: 'export', label: 'Об. экспорт', w: 110 },
+  { key: 'import', label: 'Импорт', w: 110 },
+  { key: 'export', label: 'Экспорт', w: 110 },
   { key: 'director', label: 'Руководитель', w: 180 },
   { key: 'calls', label: 'Попыток', w: 70 },
   { key: 'status', label: 'Статус', w: 110 },
+  { key: 'manager', label: 'Менеджер', w: 150 },
 ]
 
 const TOTAL_W = COL_DEFS.reduce((s, c) => s + c.w, 0)
 
 function RegionFilter({ value, onChange, regions }: { value: string; onChange: (v: string) => void; regions: string[] }) {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState(value)
+  const [query, setQuery] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -47,14 +55,17 @@ function RegionFilter({ value, onChange, regions }: { value: string; onChange: (
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setQuery('')
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   useEffect(() => {
-    setQuery(value)
+    if (value) setQuery(value)
   }, [value])
 
   const select = useCallback((r: string) => {
@@ -64,23 +75,39 @@ function RegionFilter({ value, onChange, regions }: { value: string; onChange: (
     inputRef.current?.blur()
   }, [onChange])
 
+  const clear = useCallback(() => {
+    setQuery('')
+    onChange('')
+  }, [onChange])
+
   return (
     <div ref={ref} className="relative">
-      <input
-        ref={inputRef}
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
-        placeholder="Регион..."
-        className="w-44 px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-      />
+      <div className="flex items-center">
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setOpen(false); setQuery(value || ''); inputRef.current?.blur() }
+            if (e.key === 'Enter' && filtered.length > 0) { select(filtered[0]) }
+          }}
+          placeholder="Регион..."
+          className="w-44 px-3 py-1.5 bg-bg border border-muted/20 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        {query && (
+          <button onClick={clear} className="px-2 py-1.5 bg-bg border border-l-0 border-muted/20 rounded-r-lg text-muted hover:text-text text-xs">
+            ✕
+          </button>
+        )}
+      </div>
       {open && filtered.length > 0 && (
         <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-auto bg-surface border border-muted/20 rounded-lg shadow-xl z-50">
           {filtered.map(r => (
             <button
               key={r}
               onClick={() => select(r)}
-              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-surfaceHover ${r === value ? 'text-accent font-medium' : ''}`}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-surfaceHover"
             >
               {r}
             </button>
@@ -92,11 +119,24 @@ function RegionFilter({ value, onChange, regions }: { value: string; onChange: (
 }
 
 function formatMoney(val: number | null | undefined) {
-  if (!val) return '—'
+  if (val === null || val === undefined) return '—'
   if (val >= 1e9) return `${(val / 1e9).toFixed(1)} млрд`
   if (val >= 1e6) return `${(val / 1e6).toFixed(0)} млн`
   if (val >= 1e3) return `${(val / 1e3).toFixed(0)} тыс`
   return val.toLocaleString('ru-RU')
+}
+
+function formatNumericString(val: string | null | undefined) {
+  if (!val || val === '') return '—'
+  // Try to parse as number
+  const num = parseFloat(val)
+  if (isNaN(num)) return val // Return as-is if not a number
+  
+  // Format like formatMoney but without the currency symbol
+  if (num >= 1e9) return `${(num / 1e9).toFixed(1)} млрд`
+  if (num >= 1e6) return `${(num / 1e6).toFixed(0)} млн`
+  if (num >= 1e3) return `${(num / 1e3).toFixed(0)} тыс`
+  return num.toLocaleString('ru-RU')
 }
 
 function getWebsite(c: Company) {
@@ -124,27 +164,60 @@ function getOrgForm(c: Company) {
 export default function CompanyTable() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
+  const [managerFilter, setManagerFilter] = useState('')
+  const [archived, setArchived] = useState(false)
+  const [showCalendar, setShowCalendar] = useState(false)
   const [regions, setRegions] = useState<string[]>([])
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [total, setTotal] = useState(0)
+  const [managers, setManagers] = useState<User[]>([])
+  const [sourceFilter, setSourceFilter] = useState('')
+  const [sources, setSources] = useState<ImportSource[]>([])
+  const currentUser = useAuth(s => s.user)
+  const isAdminOrLead = currentUser?.role === 'admin' || currentUser?.role === 'lead'
+
+  const handleMeetingClick = async (companyId: string) => {
+    try {
+      const { data } = await api.get(`/companies/${companyId}`)
+      setSelectedCompany(data)
+    } catch (error) {
+      console.error('Failed to fetch company for meeting:', error)
+      // Don't setSelectedCompany on error - user stays in current view
+      // Modal remains open so they can try again or see context
+    }
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 400)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   useEffect(() => {
     api.get('/companies/regions').then(({ data }) => {
       setRegions(data.regions || [])
     })
+    api.get('/auth/managers').then(({ data }) => {
+      setManagers(data)
+    })
+    api.get('/import/sources').then(({ data }) => {
+      setSources(data)
+    })
   }, [])
+
+  const managerMap = Object.fromEntries(managers.map(m => [m.id, m.name || m.email]))
 
   useEffect(() => {
     const fetchCompanies = async () => {
       setLoading(true)
       try {
         const { data } = await api.get('/companies', {
-          params: { page, page_size: pageSize, search, status: statusFilter || undefined, region: regionFilter || undefined }
+          params: { page, page_size: pageSize, search, status: statusFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined }
         })
         setCompanies(data.items)
         setTotal(data.total)
@@ -153,7 +226,7 @@ export default function CompanyTable() {
       }
     }
     fetchCompanies()
-  }, [page, pageSize, search, statusFilter, regionFilter])
+  }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -174,26 +247,31 @@ export default function CompanyTable() {
   }, [])
 
   const clearFilters = () => {
+    setSearchInput('')
     setSearch('')
     setStatusFilter('')
     setRegionFilter('')
+    setManagerFilter('')
+    setSourceFilter('')
     setPage(1)
   }
 
-  const hasFilters = search || statusFilter || regionFilter
+  const hasFilters = searchInput || statusFilter || regionFilter || managerFilter || sourceFilter
   const totalPages = Math.ceil(total / pageSize)
 
   if (loading) return <div className="flex items-center justify-center h-64">Загрузка...</div>
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Filters */}
-      <div className="p-3 border-b border-muted/10 space-y-2 shrink-0">
+    <div className="flex h-full">
+      {/* Table area */}
+      <div className={`flex flex-col h-full ${selectedCompany ? 'flex-1 min-w-0' : 'flex-1 min-w-0'}`}>
+        {/* Filters */}
+        <div className="p-3 border-b border-muted/10 space-y-2 shrink-0">
         <input
           type="text"
           placeholder="Поиск по названию, ИНН..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+          value={searchInput}
+          onChange={(e) => { setSearchInput(e.target.value); setPage(1) }}
           className="w-full px-4 py-2 bg-bg border border-muted/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <div className="flex gap-3 items-center">
@@ -207,11 +285,56 @@ export default function CompanyTable() {
             ))}
           </select>
           <RegionFilter value={regionFilter} onChange={(v) => { setRegionFilter(v); setPage(1) }} regions={regions} />
+          {sources.length > 0 && (
+            <select
+              value={sourceFilter}
+              onChange={(e) => { setSourceFilter(e.target.value); setPage(1) }}
+              className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Все источники</option>
+              {sources.map(s => (
+                <option key={s.id} value={s.id}>{s.original_filename}</option>
+              ))}
+            </select>
+          )}
+          {isAdminOrLead && managers.map(m => (
+            <button
+              key={m.id}
+              onClick={() => { setManagerFilter(managerFilter === m.id ? '' : m.id); setPage(1) }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                managerFilter === m.id
+                  ? 'bg-accent text-white'
+                  : 'bg-surface text-muted hover:text-text border border-muted/20'
+              }`}
+            >
+              {m.name || m.email}
+            </button>
+          ))}
           {hasFilters && (
             <button onClick={clearFilters} className="px-3 py-1.5 text-sm text-accent hover:underline">
               Сбросить
             </button>
           )}
+          <div className="ml-auto flex gap-1 bg-bg rounded-lg border border-muted/20 p-0.5">
+            <button
+              onClick={() => setShowCalendar(true)}
+              className="px-3 py-1 text-xs font-medium rounded-md text-muted hover:text-text transition-colors"
+            >
+              Календарь
+            </button>
+            <button
+              onClick={() => { setArchived(false); setPage(1); setStatusFilter('') }}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${!archived ? 'bg-accent text-white' : 'text-muted hover:text-text'}`}
+            >
+              Активные
+            </button>
+            <button
+              onClick={() => { setArchived(true); setPage(1); setStatusFilter('') }}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${archived ? 'bg-accent text-white' : 'text-muted hover:text-text'}`}
+            >
+              Архив
+            </button>
+          </div>
         </div>
       </div>
 
@@ -254,13 +377,40 @@ export default function CompanyTable() {
                       </a>
                     ) : '—'}
                   </div>
-                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[6].w }}>{formatMoney(c.capital)}</div>
-                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[7].w }}>{formatMoney(c.revenue)}</div>
-                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[8].w }}>{c.import_turnover || '—'}</div>
-                  <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[9].w }}>{c.export_turnover || '—'}</div>
+<div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[6].w }}>{formatMoney(c.capital)}</div>
+<div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[7].w }}>{formatMoney(c.revenue)}</div>
+<div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[8].w }}>{formatNumericString(c.import_turnover)}</div>
+<div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[9].w }}>{formatNumericString(c.export_turnover)}</div>
                   <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[10].w }} title={c.director || ''}>{c.director || '—'}</div>
                   <div className="px-3 text-center shrink-0 flex items-center justify-center" style={{ width: COL_DEFS[11].w }}>{c.call_count}</div>
                   <div className="px-3 shrink-0 flex items-center" style={{ width: COL_DEFS[12].w }}><StatusBadge status={c.call_status} /></div>
+                  <div className="px-1 shrink-0 flex items-center" style={{ width: COL_DEFS[13].w }}>
+                    {isAdminOrLead ? (
+                      <select
+                        value={c.assigned_to || ''}
+                        onClick={e => e.stopPropagation()}
+                        onChange={async (e) => {
+                          e.stopPropagation()
+                          const val = e.target.value || null
+                          const prevAssigned = c.assigned_to
+                          setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, assigned_to: val } : p))
+                          try {
+                            await api.patch(`/companies/${c.id}/assign`, { user_id: val })
+                          } catch {
+                            setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, assigned_to: prevAssigned } : p))
+                          }
+                        }}
+                        className="w-full px-1 py-1 bg-bg border border-muted/20 rounded text-xs focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                      >
+                        <option value="">—</option>
+                        {managers.map(m => (
+                          <option key={m.id} value={m.id}>{m.name || m.email}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-muted truncate">{managerMap[c.assigned_to || ''] || '—'}</span>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -299,10 +449,15 @@ export default function CompanyTable() {
           </div>
         </div>
       </div>
-
+      </div>
+      {/* Company Card - right side */}
       {selectedCompany && (
-        <CompanyCard company={selectedCompany} onClose={() => setSelectedCompany(null)} />
+        <div className="shrink-0 border-l border-muted/10">
+          <CompanyCard company={selectedCompany} onClose={() => setSelectedCompany(null)} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onNavigateToCompany={handleMeetingClick} />
+        </div>
       )}
+
+      {showCalendar && <CalendarModal onClose={() => setShowCalendar(false)} onMeetingClick={(companyId) => { setShowCalendar(false); handleMeetingClick(companyId) }} />}
     </div>
   )
 }

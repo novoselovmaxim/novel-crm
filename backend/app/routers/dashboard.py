@@ -34,8 +34,10 @@ async def my_dashboard(
     )
     calls_today = calls_today_result.scalar() or 0
     
+    total_all = sum(1 for c in companies if c.call_status != "refused")
+    
     return DashboardMetrics(
-        total_companies=len(companies),
+        total_companies=total_all,
         new_companies=sum(1 for c in companies if c.call_status == "new"),
         in_progress=sum(1 for c in companies if c.call_status == "in_progress"),
         interested=sum(1 for c in companies if c.call_status == "interested"),
@@ -43,5 +45,7 @@ async def my_dashboard(
         refused=sum(1 for c in companies if c.call_status == "refused"),
         calls_today=calls_today,
         tasks_today=tasks_today,
-        overdue=overdue
+        overdue=overdue,
+        archived=sum(1 for c in companies if c.call_status == "refused"),
+        unprocessed=sum(1 for c in companies if c.call_count == 0 and c.call_status != "refused"),
     )

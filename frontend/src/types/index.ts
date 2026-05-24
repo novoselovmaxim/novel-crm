@@ -8,8 +8,10 @@ export interface Company {
   reg_date?: string | null
   region: string | null
   address?: string | null
+  actual_address?: string | null
   tax_office?: string | null
   phone: string | null
+  lpr_phone?: string | null
   email: string | null
   website: string | null
   linkedin?: string | null
@@ -18,6 +20,7 @@ export interface Company {
   director_inn?: string | null
   fin_director?: string | null
   contact_person?: string | null
+  contact_person_full?: string | null
   citizenship?: string | null
   activity_main: string | null
   activity_code?: string | null
@@ -28,11 +31,13 @@ export interface Company {
   profit?: number | null
   employees?: number | null
   capital?: number | null
+  balance?: number | null
   import_turnover?: string | null
   export_turnover?: string | null
   import_confirmed?: string | null
   foreign_payments?: string | null
   arbitrage?: string | null
+  arbitrage_amount?: string | null
   licenses?: string | null
   registries?: string | null
   msp?: string | null
