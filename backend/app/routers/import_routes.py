@@ -292,7 +292,7 @@ async def run_import(
     )
 
 
-@router.get("/run/{source_id}", response_model=ImportRunStatusResponse)
+@router.get("/run/{source_id}/status", response_model=ImportRunStatusResponse)
 async def get_import_status(
     source_id: uuid.UUID,
     _=Depends(get_current_user),
