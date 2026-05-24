@@ -132,7 +132,7 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
       })
       pollRef.current = setInterval(async () => {
         try {
-          const { data: status } = await api.get<ImportRunStatus>(`/import/run/${data.source_id}`)
+          const { data: status } = await api.get<ImportRunStatus>(`/import/run/${data.source_id}/status`)
           setRunStatus(status)
           if (status.status === 'imported' || status.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current)
