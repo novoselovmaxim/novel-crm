@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, distinct
+from sqlalchemy import select, func, or_, distinct, case
 from typing import Optional
+import uuid
 import uuid
 
 from ..database import get_db
-from ..models import User, Company, CallLog, AuditLog
+from ..models import User, Company, CallLog, AuditLog, ImportSourceData
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, MeetingCreate
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
+
+ARCHIVE_STATUS = "refused"
 
 @router.get("/regions")
 async def list_regions(
@@ -29,11 +32,20 @@ async def list_companies(
     region: Optional[str] = None,
     status: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    archived: bool = Query(False, description="Show archived (refused) companies only"),
+    source: Optional[str] = Query(None, description="Filter by import source id"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     query = select(Company).where(Company.is_deleted == False)
     count_query = select(func.count()).select_from(Company).where(Company.is_deleted == False)
+    
+    if archived:
+        query = query.where(Company.call_status == ARCHIVE_STATUS)
+        count_query = count_query.where(Company.call_status == ARCHIVE_STATUS)
+    else:
+        query = query.where(Company.call_status != ARCHIVE_STATUS)
+        count_query = count_query.where(Company.call_status != ARCHIVE_STATUS)
     
     if current_user.role == "manager":
         query = query.where(Company.assigned_to == current_user.id)
@@ -61,7 +73,25 @@ async def list_companies(
         query = query.where(Company.assigned_to == assigned_to)
         count_query = count_query.where(Company.assigned_to == assigned_to)
     
-    query = query.order_by(Company.next_call_date.asc().nulls_last()).offset((page - 1) * page_size).limit(page_size)
+    if source:
+        try:
+            source_uuid = uuid.UUID(source)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid source UUID")
+        subq = select(ImportSourceData.company_id).where(ImportSourceData.source_id == source_uuid, ImportSourceData.company_id.isnot(None))
+        query = query.where(Company.id.in_(subq))
+        count_query = count_query.where(Company.id.in_(subq))
+    
+    # Order: new companies first (no next_call_date), then overdue/today, then rest; newest first within groups
+    query = query.order_by(
+        case(
+            (Company.next_call_date.is_(None), 0),
+            (Company.call_status == "new", 1),
+            else_=2
+        ),
+        Company.next_call_date.asc().nulls_last(),
+        Company.created_at.desc().nulls_last()
+    ).offset((page - 1) * page_size).limit(page_size)
     
     result = await db.execute(query)
     companies = result.scalars().all()
@@ -197,7 +227,7 @@ async def schedule_meeting(
 async def assign_company(
     company_id: uuid.UUID,
     request: AssignRequest,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_admin_or_lead),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))

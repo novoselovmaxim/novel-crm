@@ -1,5 +1,5 @@
-from sqlalchemy import Column, String, Integer, BigInteger, Text, Boolean, DateTime, Date, ForeignKey, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Integer, BigInteger, Text, Boolean, DateTime, Date, ForeignKey, Enum as SAEnum, Time, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -39,8 +39,10 @@ class Company(Base):
     name = Column(String, nullable=False, index=True)
     region = Column(String, nullable=True, index=True)
     address = Column(Text, nullable=True)
+    actual_address = Column(Text, nullable=True)
     tax_office = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    lpr_phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     website = Column(String, nullable=True)
     linkedin = Column(String, nullable=True)
@@ -48,22 +50,25 @@ class Company(Base):
     director_title = Column(String, nullable=True)
     director_inn = Column(String, nullable=True)
     fin_director = Column(String, nullable=True)
-    contact_person = Column(String, nullable=True)
+    contact_person = Column(Text, nullable=True)
+    contact_person_full = Column(Text, nullable=True)
     citizenship = Column(String, nullable=True)
-    activity_main = Column(String, nullable=True)
+    activity_main = Column(Text, nullable=True)
     activity_code = Column(String, nullable=True)
-    activity_other = Column(String, nullable=True)
+    activity_other = Column(Text, nullable=True)
     niche = Column(String, nullable=True)
     supply_subject = Column(String, nullable=True)
     revenue = Column(BigInteger, nullable=True)
     profit = Column(BigInteger, nullable=True)
     employees = Column(Integer, nullable=True)
     capital = Column(BigInteger, nullable=True)
+    balance = Column(BigInteger, nullable=True)
     import_turnover = Column(String, nullable=True)
     export_turnover = Column(String, nullable=True)
     import_confirmed = Column(String, nullable=True)
     foreign_payments = Column(String, nullable=True)
     arbitrage = Column(String, nullable=True)
+    arbitrage_amount = Column(String, nullable=True)
     licenses = Column(String, nullable=True)
     registries = Column(String, nullable=True)
     msp = Column(String, nullable=True)
@@ -103,6 +108,50 @@ class AuditLog(Base):
     old_value = Column(Text, nullable=True)
     new_value = Column(Text, nullable=True)
     changed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class AvailabilitySlot(Base):
+    __tablename__ = "availability_slots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
+    time_start = Column(Time, nullable=False)
+    time_end = Column(Time, nullable=False)
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+    __table_args__ = (UniqueConstraint("date", "hour", name="uq_meeting_slot"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    booked_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    hour = Column(Integer, nullable=False)  # 0-23
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ImportSource(Base):
+    __tablename__ = "import_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    original_filename = Column(String, nullable=False)
+    stored_filename = Column(String, nullable=False)
+    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+    column_mapping = Column(JSONB, nullable=True)
+    template_name = Column(String, nullable=True)
+    status = Column(String, default="imported")
+
+
+class ImportSourceData(Base):
+    __tablename__ = "import_source_data"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id = Column(UUID(as_uuid=True), ForeignKey("import_sources.id"), nullable=False, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True, index=True)
+    row_data = Column(JSONB, nullable=False)
+    raw_row_number = Column(Integer, nullable=True)
+
 
 async def create_tables():
     async with engine.begin() as conn:

@@ -54,7 +54,12 @@ class TelegramWebhookHandler:
         self.application.add_handler(CommandHandler("help", help_command))
         self.application.add_handler(CommandHandler("status", status_command))
         
-        await self.application.initialize()
+        try:
+            await self.application.initialize()
+        except Exception as e:
+            logger.error(f"Failed to initialize Telegram application: {e}")
+            self.application = None
+            return
         
         try:
             await self.application.bot.set_webhook(url=TG_WEBHOOK_URL)

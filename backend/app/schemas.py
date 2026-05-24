@@ -44,8 +44,10 @@ class CompanyBase(BaseModel):
     reg_date: Optional[date] = None
     region: Optional[str] = None
     address: Optional[str] = None
+    actual_address: Optional[str] = None
     tax_office: Optional[str] = None
     phone: Optional[str] = None
+    lpr_phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
     linkedin: Optional[str] = None
@@ -54,6 +56,7 @@ class CompanyBase(BaseModel):
     director_inn: Optional[str] = None
     fin_director: Optional[str] = None
     contact_person: Optional[str] = None
+    contact_person_full: Optional[str] = None
     citizenship: Optional[str] = None
     activity_main: Optional[str] = None
     activity_code: Optional[str] = None
@@ -64,11 +67,13 @@ class CompanyBase(BaseModel):
     profit: Optional[int] = None
     employees: Optional[int] = None
     capital: Optional[int] = None
+    balance: Optional[int] = None
     import_turnover: Optional[str] = None
     export_turnover: Optional[str] = None
     import_confirmed: Optional[str] = None
     foreign_payments: Optional[str] = None
     arbitrage: Optional[str] = None
+    arbitrage_amount: Optional[str] = None
     licenses: Optional[str] = None
     registries: Optional[str] = None
     msp: Optional[str] = None
@@ -95,8 +100,10 @@ class CompanyUpdate(BaseModel):
     reg_date: Optional[date] = None
     region: Optional[str] = None
     address: Optional[str] = None
+    actual_address: Optional[str] = None
     tax_office: Optional[str] = None
     phone: Optional[str] = None
+    lpr_phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
     linkedin: Optional[str] = None
@@ -105,6 +112,7 @@ class CompanyUpdate(BaseModel):
     director_inn: Optional[str] = None
     fin_director: Optional[str] = None
     contact_person: Optional[str] = None
+    contact_person_full: Optional[str] = None
     citizenship: Optional[str] = None
     activity_main: Optional[str] = None
     activity_code: Optional[str] = None
@@ -115,11 +123,13 @@ class CompanyUpdate(BaseModel):
     profit: Optional[int] = None
     employees: Optional[int] = None
     capital: Optional[int] = None
+    balance: Optional[int] = None
     import_turnover: Optional[str] = None
     export_turnover: Optional[str] = None
     import_confirmed: Optional[str] = None
     foreign_payments: Optional[str] = None
     arbitrage: Optional[str] = None
+    arbitrage_amount: Optional[str] = None
     licenses: Optional[str] = None
     registries: Optional[str] = None
     msp: Optional[str] = None
@@ -152,7 +162,6 @@ class CompanyListResponse(BaseModel):
     page_size: int
 
 class CallLogCreate(BaseModel):
-    company_id: uuid.UUID
     call_status: str
     notes: Optional[str] = None
     next_call_date: Optional[date] = None
@@ -183,6 +192,65 @@ class DashboardMetrics(BaseModel):
     calls_today: int
     tasks_today: int
     overdue: int
+    archived: int
+    unprocessed: int
 
 class AssignRequest(BaseModel):
-    user_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
+
+class ImportFieldInfo(BaseModel):
+    key: str
+    label: str
+    type: str
+
+class UploadPreview(BaseModel):
+    file_id: str
+    original_filename: str
+    sheets: list[str]
+    columns: list[str]
+    sample_rows: list[list[Optional[str]]]
+    auto_mapping: dict[str, str]
+    unmatched: list[str]
+
+class ImportRunRequest(BaseModel):
+    file_id: str
+    sheet: str
+    mapping: dict[str, str]
+    original_filename: str = "import"
+    template_name: Optional[str] = None
+
+class ImportTemplateCreate(BaseModel):
+    name: str
+    mapping: dict[str, str]
+
+class ImportTemplateResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    mapping: dict[str, str]
+
+    class Config:
+        from_attributes = True
+
+class ImportSourceResponse(BaseModel):
+    id: uuid.UUID
+    original_filename: str
+    uploaded_at: datetime
+    column_mapping: Optional[dict]
+    status: str
+    template_name: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class ImportSourceDataItem(BaseModel):
+    source_id: uuid.UUID
+    source_filename: str
+    uploaded_at: datetime
+    row_data: dict
+    raw_row_number: Optional[int]
+
+class ImportResult(BaseModel):
+    added: int
+    updated: int
+    skipped: int
+    total: int

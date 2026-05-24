@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .database import get_db
 from .models import create_tables
-from .routers import auth, companies, dashboard, telegram
+from .routers import auth, companies, dashboard, telegram, import_routes, availability
 from .notifications import notifier
 from .telegram_webhook import router as telegram_webhook_router, webhook_handler
 
@@ -25,6 +25,8 @@ app.include_router(companies.router)
 app.include_router(dashboard.router)
 app.include_router(telegram.router)
 app.include_router(telegram_webhook_router)
+app.include_router(import_routes.router)
+app.include_router(availability.router)
 
 @app.get("/api/health")
 async def health():
@@ -34,7 +36,10 @@ async def health():
 async def startup():
     await create_tables()
     await notifier.initialize()
-    await webhook_handler.initialize()
+    try:
+        await webhook_handler.initialize()
+    except Exception as e:
+        print(f"Telegram bot init failed (non-fatal): {e}")
 
 static_dir = Path("/app/static")
 if static_dir.exists():
