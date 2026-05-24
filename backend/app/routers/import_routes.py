@@ -456,6 +456,26 @@ def process_mapped_row(
     return inn_val, mapped_values
 
 
+@router.delete("/sources/{source_id}")
+async def delete_source(
+    source_id: uuid.UUID,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ImportSource).where(ImportSource.id == source_id)
+    )
+    src = result.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Source not found")
+    await db.execute(
+        delete(ImportSourceData).where(ImportSourceData.source_id == source_id)
+    )
+    await db.delete(src)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/sources", response_model=list[ImportSourceResponse])
 async def list_sources(
     current_user: User = Depends(get_current_user),
