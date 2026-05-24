@@ -22,6 +22,7 @@ export const useAuth = create<AuthState>((set) => ({
     try {
       const { data } = await api.post('/auth/login', { email, password })
       localStorage.setItem('access_token', data.access_token)
+      localStorage.setItem('refresh_token', data.refresh_token)
       set({ token: data.access_token })
       await useAuth.getState().fetchUser()
     } finally {
@@ -31,6 +32,7 @@ export const useAuth = create<AuthState>((set) => ({
   
   logout: () => {
     localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
     set({ user: null, token: null })
   },
   
