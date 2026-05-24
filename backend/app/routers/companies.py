@@ -24,6 +24,26 @@ async def list_regions(
     regions = [r[0] for r in result.all() if r[0]]
     return {"regions": regions}
 
+@router.get("/org-forms")
+async def list_org_forms(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(distinct(Company.org_form)).where(Company.is_deleted == False, Company.org_form != None).order_by(Company.org_form)
+    result = await db.execute(query)
+    forms = [r[0] for r in result.all() if r[0]]
+    return {"org_forms": forms}
+
+@router.get("/activities")
+async def list_activities(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(distinct(Company.activity_main)).where(Company.is_deleted == False, Company.activity_main != None).order_by(Company.activity_main)
+    result = await db.execute(query)
+    activities = [r[0] for r in result.all() if r[0]]
+    return {"activities": activities}
+
 @router.get("", response_model=CompanyListResponse)
 async def list_companies(
     page: int = Query(1, ge=1),
@@ -34,6 +54,10 @@ async def list_companies(
     assigned_to: Optional[str] = None,
     archived: bool = Query(False, description="Show archived (refused) companies only"),
     source: Optional[str] = Query(None, description="Filter by import source id"),
+    org_form: Optional[str] = Query(None, description="Filter by OPF"),
+    activity: Optional[str] = Query(None, description="Filter by activity_main"),
+    sort_by: Optional[str] = Query(None, description="Sort field: revenue, name"),
+    sort_order: Optional[str] = Query("desc", description="Sort order: asc or desc"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -82,16 +106,36 @@ async def list_companies(
         query = query.where(Company.id.in_(subq))
         count_query = count_query.where(Company.id.in_(subq))
     
-    # Order: new companies first (no next_call_date), then overdue/today, then rest; newest first within groups
-    query = query.order_by(
-        case(
-            (Company.next_call_date.is_(None), 0),
-            (Company.call_status == "new", 1),
-            else_=2
-        ),
-        Company.next_call_date.asc().nulls_last(),
-        Company.created_at.desc().nulls_last()
-    ).offset((page - 1) * page_size).limit(page_size)
+    if org_form:
+        query = query.where(Company.org_form == org_form)
+        count_query = count_query.where(Company.org_form == org_form)
+    
+    if activity:
+        query = query.where(Company.activity_main == activity)
+        count_query = count_query.where(Company.activity_main == activity)
+    
+    is_asc = sort_order == "asc"
+    if sort_by == "revenue":
+        order_col = Company.revenue.asc().nulls_last() if is_asc else Company.revenue.desc().nulls_last()
+    elif sort_by == "name":
+        order_col = Company.name.asc().nulls_last() if is_asc else Company.name.desc().nulls_last()
+    else:
+        order_col = None
+    
+    if order_col is not None:
+        query = query.order_by(order_col)
+    else:
+        query = query.order_by(
+            case(
+                (Company.next_call_date.is_(None), 0),
+                (Company.call_status == "new", 1),
+                else_=2
+            ),
+            Company.next_call_date.asc().nulls_last(),
+            Company.created_at.desc().nulls_last()
+        )
+    
+    query = query.offset((page - 1) * page_size).limit(page_size)
     
     result = await db.execute(query)
     companies = result.scalars().all()

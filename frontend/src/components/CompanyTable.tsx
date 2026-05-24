@@ -45,6 +45,79 @@ const COL_DEFS = [
 
 const TOTAL_W = COL_DEFS.reduce((s, c) => s + c.w, 0)
 
+function SearchableFilter({ value, onChange, items, placeholder }: { value: string; onChange: (v: string) => void; items: string[]; placeholder: string }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const filtered = items.filter(r => r.toLowerCase().includes(query.toLowerCase())).slice(0, 80)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (value) setQuery(value)
+  }, [value])
+
+  const select = useCallback((r: string) => {
+    setQuery(r)
+    onChange(r)
+    setOpen(false)
+    inputRef.current?.blur()
+  }, [onChange])
+
+  const clear = useCallback(() => {
+    setQuery('')
+    onChange('')
+  }, [onChange])
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="flex items-center">
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { setOpen(false); setQuery(value || ''); inputRef.current?.blur() }
+            if (e.key === 'Enter' && filtered.length > 0) { select(filtered[0]) }
+          }}
+          placeholder={placeholder}
+          className="w-44 px-3 py-1.5 bg-bg border border-muted/20 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        {query && (
+          <button onClick={clear} className="px-2 py-1.5 bg-bg border border-l-0 border-muted/20 rounded-r-lg text-muted hover:text-text text-xs">
+            ✕
+          </button>
+        )}
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-auto bg-surface border border-muted/20 rounded-lg shadow-xl z-50">
+          {filtered.map(r => (
+            <button
+              key={r}
+              onClick={() => select(r)}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-surfaceHover"
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RegionFilter({ value, onChange, regions }: { value: string; onChange: (v: string) => void; regions: string[] }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -179,6 +252,12 @@ export default function CompanyTable() {
   const [managers, setManagers] = useState<User[]>([])
   const [sourceFilter, setSourceFilter] = useState('')
   const [sources, setSources] = useState<ImportSource[]>([])
+  const [sortBy, setSortBy] = useState('')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [orgFormFilter, setOrgFormFilter] = useState('')
+  const [activityFilter, setActivityFilter] = useState('')
+  const [orgForms, setOrgForms] = useState<string[]>([])
+  const [activities, setActivities] = useState<string[]>([])
   const currentUser = useAuth(s => s.user)
   const isAdminOrLead = currentUser?.role === 'admin' || currentUser?.role === 'lead'
 
@@ -202,6 +281,12 @@ export default function CompanyTable() {
     api.get('/companies/regions').then(({ data }) => {
       setRegions(data.regions || [])
     })
+    api.get('/companies/org-forms').then(({ data }) => {
+      setOrgForms(data.org_forms || [])
+    })
+    api.get('/companies/activities').then(({ data }) => {
+      setActivities(data.activities || [])
+    })
     api.get('/auth/managers').then(({ data }) => {
       setManagers(data)
     })
@@ -216,9 +301,9 @@ export default function CompanyTable() {
     const fetchCompanies = async () => {
       setLoading(true)
       try {
-        const { data } = await api.get('/companies', {
-          params: { page, page_size: pageSize, search, status: statusFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined }
-        })
+        const params: Record<string, any> = { page, page_size: pageSize, search, status: statusFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined, org_form: orgFormFilter || undefined, activity: activityFilter || undefined }
+        if (sortBy) { params.sort_by = sortBy; params.sort_order = sortOrder }
+        const { data } = await api.get('/companies', { params })
         setCompanies(data.items)
         setTotal(data.total)
       } finally {
@@ -226,7 +311,7 @@ export default function CompanyTable() {
       }
     }
     fetchCompanies()
-  }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter])
+  }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -253,10 +338,24 @@ export default function CompanyTable() {
     setRegionFilter('')
     setManagerFilter('')
     setSourceFilter('')
+    setOrgFormFilter('')
+    setActivityFilter('')
+    setSortBy('')
+    setSortOrder('desc')
     setPage(1)
   }
 
-  const hasFilters = searchInput || statusFilter || regionFilter || managerFilter || sourceFilter
+  const toggleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(field)
+      setSortOrder('desc')
+    }
+    setPage(1)
+  }
+
+  const hasFilters = searchInput || statusFilter || regionFilter || managerFilter || sourceFilter || orgFormFilter || activityFilter || sortBy
   const totalPages = Math.ceil(total / pageSize)
 
   if (loading) return <div className="flex items-center justify-center h-64">Загрузка...</div>
@@ -285,6 +384,17 @@ export default function CompanyTable() {
             ))}
           </select>
           <RegionFilter value={regionFilter} onChange={(v) => { setRegionFilter(v); setPage(1) }} regions={regions} />
+          <select
+            value={orgFormFilter}
+            onChange={(e) => { setOrgFormFilter(e.target.value); setPage(1) }}
+            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">Все ОПФ</option>
+            {orgForms.map(f => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+          <SearchableFilter value={activityFilter} onChange={(v) => { setActivityFilter(v); setPage(1) }} items={activities} placeholder="Деятельность..." />
           {sources.length > 0 && (
             <select
               value={sourceFilter}
@@ -343,11 +453,22 @@ export default function CompanyTable() {
         {/* Header */}
         <div ref={headerRef} className="overflow-x-auto overflow-y-hidden shrink-0" style={{ scrollbarWidth: 'none' }}>
           <div className="flex" style={{ width: TOTAL_W, minWidth: TOTAL_W }}>
-            {COL_DEFS.map(col => (
-              <div key={col.key} className="px-3 py-2 text-xs font-medium text-muted border-r border-muted/5 truncate shrink-0" style={{ width: col.w }}>
-                {col.label}
-              </div>
-            ))}
+            {COL_DEFS.map(col => {
+              const sortable = col.key === 'revenue' || col.key === 'name'
+              return (
+                <div
+                  key={col.key}
+                  onClick={sortable ? () => toggleSort(col.key) : undefined}
+                  className={`px-3 py-2 text-xs font-medium text-muted border-r border-muted/5 truncate shrink-0 flex items-center gap-1 ${sortable ? 'cursor-pointer hover:text-text select-none' : ''}`}
+                  style={{ width: col.w }}
+                >
+                  {col.label}
+                  {sortable && sortBy === col.key && (
+                    <span className="text-[10px]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
