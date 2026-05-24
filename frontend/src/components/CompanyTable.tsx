@@ -250,6 +250,16 @@ export default function CompanyTable() {
   const [pageSize, setPageSize] = useState(50)
   const [total, setTotal] = useState(0)
   const [managers, setManagers] = useState<User[]>([])
+  const ORG_FORM_SHORT: Record<string, string> = {
+    'Общество с ограниченной ответственностью': 'ООО',
+    'Акционерное общество': 'АО',
+    'Открытое акционерное общество': 'ОАО',
+    'Закрытое акционерное общество': 'ЗАО',
+    'Индивидуальный предприниматель': 'ИП',
+    'Публичное акционерное общество': 'ПАО',
+    'Некоммерческая организация': 'НО',
+  }
+
   const [sourceFilter, setSourceFilter] = useState('')
   const [sources, setSources] = useState<ImportSource[]>([])
   const [sortBy, setSortBy] = useState('')
@@ -387,11 +397,11 @@ export default function CompanyTable() {
           <select
             value={orgFormFilter}
             onChange={(e) => { setOrgFormFilter(e.target.value); setPage(1) }}
-            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent w-24"
           >
             <option value="">Все ОПФ</option>
             {orgForms.map(f => (
-              <option key={f} value={f}>{f}</option>
+              <option key={f} value={f}>{ORG_FORM_SHORT[f] || f.substring(0, 10)}</option>
             ))}
           </select>
           <SearchableFilter value={activityFilter} onChange={(v) => { setActivityFilter(v); setPage(1) }} items={activities} placeholder="Деятельность..." />
