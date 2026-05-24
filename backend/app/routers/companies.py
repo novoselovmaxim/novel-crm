@@ -56,8 +56,8 @@ async def list_companies(
     source: Optional[str] = Query(None, description="Filter by import source id"),
     org_form: Optional[str] = Query(None, description="Filter by OPF"),
     activity: Optional[str] = Query(None, description="Filter by activity_main"),
-    sort_by: Optional[str] = Query(None, description="Sort field: revenue, name"),
-    sort_order: Optional[str] = Query("desc", description="Sort order: asc or desc"),
+    sort_by: Optional[str] = Query(None, description="Comma-separated sort fields: revenue, name"),
+    sort_order: Optional[str] = Query("desc", description="Comma-separated sort orders: asc, desc"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -114,16 +114,17 @@ async def list_companies(
         query = query.where(Company.activity_main == activity)
         count_query = count_query.where(Company.activity_main == activity)
     
-    is_asc = sort_order == "asc"
-    if sort_by == "revenue":
-        order_col = Company.revenue.asc().nulls_last() if is_asc else Company.revenue.desc().nulls_last()
-    elif sort_by == "name":
-        order_col = Company.name.asc().nulls_last() if is_asc else Company.name.desc().nulls_last()
-    else:
-        order_col = None
-    
-    if order_col is not None:
-        query = query.order_by(order_col)
+    SORTABLE = {"revenue": Company.revenue, "name": Company.name}
+    if sort_by:
+        fields = [s.strip() for s in sort_by.split(",") if s.strip() in SORTABLE]
+        orders = [s.strip().lower() for s in (sort_order or "desc").split(",")]
+        order_cols = []
+        for i, f in enumerate(fields):
+            col = SORTABLE[f]
+            o = orders[i] if i < len(orders) else "desc"
+            order_cols.append(col.asc().nulls_last() if o == "asc" else col.desc().nulls_last())
+        if order_cols:
+            query = query.order_by(*order_cols)
     else:
         query = query.order_by(
             case(
