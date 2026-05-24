@@ -214,6 +214,62 @@ def normalize_website(val: Optional[str]) -> Optional[str]:
 MATCH_THRESHOLD = 2
 
 
+_NAME_STRIP = re.compile(r'\b(ооо|ао|зао|ип|оао|пао|оо|llc|inc|ltd|gmbh)\b')
+
+def _name_matches(input_name: str, db_name: str) -> bool:
+    a = _NAME_STRIP.sub('', input_name.strip().lower()).strip()
+    b = _NAME_STRIP.sub('', db_name.strip().lower()).strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a in b or b in a:
+        return True
+    ta = translit(a)
+    tb = translit(b)
+    if ta == tb:
+        return True
+    if ta in tb or tb in ta:
+        return True
+    a_words = [w for w in re.split(r'[\s\-_/]+', a) if len(w) >= 3]
+    b_words = [w for w in re.split(r'[\s\-_/]+', b) if len(w) >= 3]
+    tb_words = [w for w in re.split(r'[\s\-_/]+', tb) if len(w) >= 3]
+    for w in a_words:
+        if w in b or w in tb:
+            return True
+    for w in b_words:
+        if w in a or w in ta:
+            return True
+    for w in tb_words:
+        if w in a or w in ta:
+            return True
+    if len(a_words) > 1 or len(b_words) > 1:
+        for wa in a_words:
+            for wb in b_words:
+                if _bigram_sim(wa, wb) >= 0.7:
+                    return True
+    if _bigram_sim(ta, tb) >= 0.55:
+        return True
+    ta2 = ta.replace('ch', 'kh').replace('x', 'ks')
+    tb2 = tb.replace('ch', 'kh').replace('x', 'ks')
+    if ta2 != ta or tb2 != tb:
+        if ta2 in tb2 or tb2 in ta2:
+            return True
+        if _bigram_sim(ta2, tb2) >= 0.55:
+            return True
+    return False
+
+
+def _bigram_sim(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    a_b = {a[i:i+2] for i in range(len(a) - 1)}
+    b_b = {b[i:i+2] for i in range(len(b) - 1)}
+    if not a_b or not b_b:
+        return 0.0
+    return len(a_b & b_b) / len(a_b | b_b)
+
+
 async def find_company_by_fields(
     mapped_values: dict[str, Optional[str]],
     db: AsyncSession,
@@ -225,7 +281,14 @@ async def find_company_by_fields(
 
     conditions = []
     if name_val:
-        conditions.append(func.lower(Company.name) == name_val.strip().lower())
+        nv = name_val.strip().lower()
+        conditions.append(Company.name.ilike(f"%{nv}%"))
+        tnv = translit(nv)
+        if tnv != nv:
+            conditions.append(Company.name.ilike(f"%{tnv}%"))
+        for w in set(re.split(r'[\s\-_/]+', nv)):
+            if len(w) >= 3:
+                conditions.append(Company.name.ilike(f"%{w}%"))
     if region_val:
         conditions.append(func.lower(Company.region) == region_val.strip().lower())
     if website_val:
@@ -256,14 +319,14 @@ async def find_company_by_fields(
 
     for company in candidates:
         score = 0
-        if name_val and company.name and company.name.strip().lower() == name_val.strip().lower():
+        if name_val and company.name and _name_matches(name_val, company.name):
             score += 1
         if region_val and company.region and company.region.strip().lower() == region_val.strip().lower():
             score += 1
         if website_val and company.website:
             cw = normalize_website(company.website)
             iw = normalize_website(website_val)
-            if cw and iw and cw == iw:
+            if cw and iw and (cw == iw or cw in iw or iw in cw):
                 score += 1
         if phone_val:
             np = normalize_phone(phone_val)
