@@ -56,7 +56,7 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
   const [templates, setTemplates] = useState<ImportTemplate[]>([])
   const [templateName, setTemplateName] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-
+  const [overwrite, setOverwrite] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const [runStatus, setRunStatus] = useState<ImportRunStatus | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -129,6 +129,7 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
         mapping,
         original_filename: file?.name || 'import',
         template_name: tmpl?.name || null,
+        overwrite,
       })
       pollRef.current = setInterval(async () => {
         try {
@@ -273,6 +274,11 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
             )}
 
             {error && <p className="mt-2 text-sm text-error shrink-0">{error}</p>}
+
+            <label className="flex items-center gap-2 mt-2 shrink-0 text-xs text-muted cursor-pointer select-none">
+              <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} className="accent-accent" />
+              Перезаписать существующие данные
+            </label>
 
             <div className="flex gap-3 mt-3 shrink-0">
               <button onClick={() => { setFile(null); setPreview(null); setStep('idle') }} className="flex-1 py-2.5 rounded-xl border border-muted/20 text-muted hover:text-text transition-colors text-sm">
