@@ -281,6 +281,7 @@ async def run_import(
         "sheet": req.sheet,
         "mapping": req.mapping,
         "user_id": str(current_user.id),
+        "overwrite": req.overwrite,
     }
 
     asyncio.create_task(_run_import_background(task_data))
@@ -321,6 +322,7 @@ async def _run_import_background(task_data: dict):
     sheet = task_data["sheet"]
     mapping: dict[str, str] = task_data["mapping"]
     user_id = uuid.UUID(task_data["user_id"])
+    overwrite = task_data.get("overwrite", False)
 
     async_session_local = async_sessionmaker(db_engine, expire_on_commit=False)
 
@@ -363,21 +365,37 @@ async def _run_import_background(task_data: dict):
                         for field, value in mapped_values.items():
                             if value is None:
                                 continue
-                            if field == "name" and not company.name:
-                                company.name = value
-                            elif field in INT_FIELDS:
-                                parsed = parse_int(value)
-                                if parsed is not None and getattr(company, field) is None:
-                                    setattr(company, field, parsed)
-                            elif field == "reg_date" and company.reg_date is None:
-                                try:
-                                    dt = datetime.strptime(value[:10], "%Y-%m-%d")
-                                    company.reg_date = dt.date()
-                                except (ValueError, IndexError):
-                                    pass
-                            elif field not in ("inn",) and field not in INT_FIELDS and field not in DATE_FIELDS:
-                                if getattr(company, field) is None:
-                                    setattr(company, field, value)
+                            if field in ("inn",):
+                                continue
+                            if overwrite:
+                                if field in INT_FIELDS:
+                                    parsed = parse_int(value)
+                                    if parsed is not None:
+                                        setattr(company, field, parsed)
+                                    elif field == "reg_date":
+                                        try:
+                                            dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                            company.reg_date = dt.date()
+                                        except (ValueError, IndexError):
+                                            pass
+                                    else:
+                                        setattr(company, field, value)
+                            else:
+                                if field == "name" and not company.name:
+                                    company.name = value
+                                elif field in INT_FIELDS:
+                                    parsed = parse_int(value)
+                                    if parsed is not None and getattr(company, field) is None:
+                                        setattr(company, field, parsed)
+                                elif field == "reg_date" and company.reg_date is None:
+                                    try:
+                                        dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                        company.reg_date = dt.date()
+                                    except (ValueError, IndexError):
+                                        pass
+                                elif field not in INT_FIELDS and field not in DATE_FIELDS:
+                                    if getattr(company, field) is None:
+                                        setattr(company, field, value)
 
                         source_data = ImportSourceData(
                             source_id=source.id,

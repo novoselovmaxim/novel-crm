@@ -418,16 +418,36 @@ export default function CompanyTable() {
           </select>
           <SearchableFilter value={activityFilter} onChange={(v) => { setActivityFilter(v); setPage(1) }} items={activities} placeholder="Деятельность..." />
           {sources.length > 0 && (
-            <select
-              value={sourceFilter}
-              onChange={(e) => { setSourceFilter(e.target.value); setPage(1) }}
-              className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Все источники</option>
-              {sources.map(s => (
-                <option key={s.id} value={s.id}>{s.original_filename}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                value={sourceFilter}
+                onChange={(e) => { setSourceFilter(e.target.value); setPage(1) }}
+                className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">Все источники</option>
+                {sources.map(s => (
+                  <option key={s.id} value={s.id}>{s.original_filename}</option>
+                ))}
+              </select>
+              {sourceFilter && (
+                <button
+                  onClick={async () => {
+                    if (!confirm('Удалить источник импорта и все его данные?')) return
+                    try {
+                      await api.delete(`/import/sources/${sourceFilter}`)
+                      setSources(prev => prev.filter(s => s.id !== sourceFilter))
+                      setSourceFilter('')
+                    } catch {
+                      alert('Ошибка при удалении')
+                    }
+                  }}
+                  className="px-2 py-1.5 bg-bg border border-muted/20 rounded-lg text-muted hover:text-error text-xs"
+                  title="Удалить источник"
+                >
+                  🗑
+                </button>
+              )}
+            </div>
           )}
           {isAdminOrLead && managers.map(m => (
             <button

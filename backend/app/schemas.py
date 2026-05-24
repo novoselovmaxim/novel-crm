@@ -218,6 +218,7 @@ class ImportRunRequest(BaseModel):
     mapping: dict[str, str]
     original_filename: str = "import"
     template_name: Optional[str] = None
+    overwrite: bool = False
 
 class ImportTemplateCreate(BaseModel):
     name: str
