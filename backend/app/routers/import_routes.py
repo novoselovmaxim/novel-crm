@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import json
 import asyncio
@@ -10,7 +11,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_, func
 
 from ..database import get_db, engine as db_engine
 from ..models import User, Company, ImportSource, ImportSourceData
@@ -163,6 +164,130 @@ def parse_int(val) -> Optional[int]:
         return None
 
 
+def parse_revenue(val) -> Optional[int]:
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        return int(float(s.replace(" ", "").replace(",", ".")))
+    except (ValueError, TypeError):
+        pass
+    s_lower = s.lower().replace(" ", "")
+    multipliers = [
+        ("млрд", 1_000_000_000),
+        ("миллиард", 1_000_000_000),
+        ("млн", 1_000_000),
+        ("миллион", 1_000_000),
+        ("тыс", 1_000),
+        ("тысяч", 1_000),
+    ]
+    for suffix, multiplier in multipliers:
+        if suffix in s_lower:
+            try:
+                num_str = s_lower.replace(suffix, "").strip()
+                num = float(num_str.replace(",", "."))
+                return int(num * multiplier)
+            except (ValueError, TypeError):
+                pass
+    return None
+
+
+def normalize_phone(val: Optional[str]) -> Optional[str]:
+    if not val:
+        return None
+    digits = re.sub(r'\D', '', val)
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def normalize_website(val: Optional[str]) -> Optional[str]:
+    if not val:
+        return None
+    s = val.strip().lower()
+    s = re.sub(r'^https?://', '', s)
+    s = re.sub(r'^www\.', '', s)
+    s = s.rstrip('/')
+    return s or None
+
+
+MATCH_THRESHOLD = 2
+
+
+async def find_company_by_fields(
+    mapped_values: dict[str, Optional[str]],
+    db: AsyncSession,
+) -> Optional[Company]:
+    name_val = mapped_values.get("name")
+    region_val = mapped_values.get("region")
+    website_val = mapped_values.get("website")
+    phone_val = mapped_values.get("phone") or mapped_values.get("lpr_phone")
+
+    conditions = []
+    if name_val:
+        conditions.append(func.lower(Company.name) == name_val.strip().lower())
+    if region_val:
+        conditions.append(func.lower(Company.region) == region_val.strip().lower())
+    if website_val:
+        norm_web = normalize_website(website_val)
+        if norm_web:
+            conditions.append(func.lower(Company.website).contains(norm_web))
+    if phone_val:
+        norm_phone = normalize_phone(phone_val)
+        if norm_phone:
+            conditions.append(Company.phone.like(f"%{norm_phone}"))
+            conditions.append(Company.lpr_phone.like(f"%{norm_phone}"))
+
+    if not conditions:
+        return None
+
+    try:
+        result = await db.execute(select(Company).where(or_(*conditions)))
+        candidates = result.scalars().all()
+    except Exception:
+        return None
+
+    if not candidates:
+        return None
+
+    best_score = 0
+    best_company = None
+    tied = False
+
+    for company in candidates:
+        score = 0
+        if name_val and company.name and company.name.strip().lower() == name_val.strip().lower():
+            score += 1
+        if region_val and company.region and company.region.strip().lower() == region_val.strip().lower():
+            score += 1
+        if website_val and company.website:
+            cw = normalize_website(company.website)
+            iw = normalize_website(website_val)
+            if cw and iw and cw == iw:
+                score += 1
+        if phone_val:
+            np = normalize_phone(phone_val)
+            if np:
+                cp = normalize_phone(company.phone)
+                clp = normalize_phone(company.lpr_phone)
+                if np == cp or np == clp:
+                    score += 1
+
+        if score > best_score:
+            best_score = score
+            best_company = company
+            tied = False
+        elif score == best_score and score > 0:
+            tied = True
+
+    if best_score >= MATCH_THRESHOLD and not tied:
+        return best_company
+
+    return None
+
+
+INN_BLACKLIST_LOWER = {"№", "no", "#", "номер", "п/п", "nn", "n"}
+
 def auto_detect_mapping(columns: list[str]) -> tuple[dict[str, str], list[str]]:
     mapping: dict[str, str] = {}
     unmatched: list[str] = []
@@ -177,6 +302,8 @@ def auto_detect_mapping(columns: list[str]) -> tuple[dict[str, str], list[str]]:
         matched = False
 
         for key, labels in known_labels.items():
+            if key == "inn" and col_clean in INN_BLACKLIST_LOWER:
+                continue
             for label in labels:
                 if col_clean == label or col_clean in label or label in col_clean:
                     mapping[key] = col
@@ -188,11 +315,12 @@ def auto_detect_mapping(columns: list[str]) -> tuple[dict[str, str], list[str]]:
         if not matched:
             col_slug = col_translit.replace(" ", "_").replace(",", "").replace("/", "_").replace("-", "_")
             col_slug = "".join(c for c in col_slug if c.isalnum() or c == "_")
-            for key in FIELD_LABELS:
-                if key in col_slug or col_slug in key:
-                    mapping[key] = col
-                    matched = True
-                    break
+            if col_slug and col_slug not in INN_BLACKLIST_LOWER:
+                for key in FIELD_LABELS:
+                    if key in col_slug or col_slug in key:
+                        mapping[key] = col
+                        matched = True
+                        break
 
         if not matched:
             unmatched.append(col)
@@ -346,7 +474,97 @@ async def _run_import_background(task_data: dict):
                 for db_field, excel_col in mapping.items():
                     mapped_values[db_field] = clean_val(row.get(excel_col))
 
-                if not inn_val:
+                company = None
+
+                if inn_val:
+                    result = await db.execute(
+                        select(Company).where(Company.inn == inn_val)
+                    )
+                    company = result.scalar_one_or_none()
+
+                if not company:
+                    company = await find_company_by_fields(mapped_values, db)
+
+                if company:
+                    for field, value in mapped_values.items():
+                        if value is None:
+                            continue
+                        if field in ("inn",):
+                            continue
+                        if overwrite:
+                            if field in INT_FIELDS:
+                                parsed = parse_revenue(value)
+                                if parsed is not None:
+                                    setattr(company, field, parsed)
+                            elif field == "reg_date":
+                                try:
+                                    dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                    company.reg_date = dt.date()
+                                except (ValueError, IndexError):
+                                    pass
+                            else:
+                                setattr(company, field, value)
+                        else:
+                            if field == "name" and not company.name:
+                                company.name = value
+                            elif field in INT_FIELDS:
+                                parsed = parse_revenue(value)
+                                if parsed is not None and getattr(company, field) is None:
+                                    setattr(company, field, parsed)
+                            elif field == "reg_date" and company.reg_date is None:
+                                try:
+                                    dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                    company.reg_date = dt.date()
+                                except (ValueError, IndexError):
+                                    pass
+                            elif field not in INT_FIELDS and field not in DATE_FIELDS:
+                                if getattr(company, field) is None:
+                                    setattr(company, field, value)
+
+                    source_data = ImportSourceData(
+                        source_id=source.id,
+                        company_id=company.id,
+                        row_data=raw_row,
+                        raw_row_number=idx,
+                    )
+                    db.add(source_data)
+                    source.updated_count = (source.updated_count or 0) + 1
+                elif inn_val:
+                    create_kwargs: dict = {}
+                    for field, value in mapped_values.items():
+                        if value is None:
+                            continue
+                        if field in INT_FIELDS:
+                            parsed = parse_revenue(value)
+                            if parsed is not None:
+                                create_kwargs[field] = parsed
+                        elif field == "reg_date":
+                            try:
+                                dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                create_kwargs[field] = dt.date()
+                            except (ValueError, IndexError):
+                                pass
+                        else:
+                            create_kwargs[field] = value
+
+                    if "name" not in create_kwargs:
+                        create_kwargs["name"] = f"Company {inn_val}"
+                    if "inn" not in create_kwargs:
+                        create_kwargs["inn"] = inn_val
+
+                    company = Company(**create_kwargs)
+                    db.add(company)
+                    await db.flush()
+
+                    source_data = ImportSourceData(
+                        source_id=source.id,
+                        company_id=company.id,
+                        row_data=raw_row,
+                        raw_row_number=idx,
+                    )
+                    db.add(source_data)
+                    source.added_count = (source.added_count or 0) + 1
+                else:
                     source.skipped_count = (source.skipped_count or 0) + 1
                     source_data = ImportSourceData(
                         source_id=source.id,
@@ -355,91 +573,6 @@ async def _run_import_background(task_data: dict):
                         raw_row_number=idx,
                     )
                     db.add(source_data)
-                else:
-                    company_result = await db.execute(
-                        select(Company).where(Company.inn == inn_val)
-                    )
-                    company = company_result.scalar_one_or_none()
-
-                    if company:
-                        for field, value in mapped_values.items():
-                            if value is None:
-                                continue
-                            if field in ("inn",):
-                                continue
-                            if overwrite:
-                                if field in INT_FIELDS:
-                                    parsed = parse_int(value)
-                                    if parsed is not None:
-                                        setattr(company, field, parsed)
-                                    elif field == "reg_date":
-                                        try:
-                                            dt = datetime.strptime(value[:10], "%Y-%m-%d")
-                                            company.reg_date = dt.date()
-                                        except (ValueError, IndexError):
-                                            pass
-                                    else:
-                                        setattr(company, field, value)
-                            else:
-                                if field == "name" and not company.name:
-                                    company.name = value
-                                elif field in INT_FIELDS:
-                                    parsed = parse_int(value)
-                                    if parsed is not None and getattr(company, field) is None:
-                                        setattr(company, field, parsed)
-                                elif field == "reg_date" and company.reg_date is None:
-                                    try:
-                                        dt = datetime.strptime(value[:10], "%Y-%m-%d")
-                                        company.reg_date = dt.date()
-                                    except (ValueError, IndexError):
-                                        pass
-                                elif field not in INT_FIELDS and field not in DATE_FIELDS:
-                                    if getattr(company, field) is None:
-                                        setattr(company, field, value)
-
-                        source_data = ImportSourceData(
-                            source_id=source.id,
-                            company_id=company.id,
-                            row_data=raw_row,
-                            raw_row_number=idx,
-                        )
-                        db.add(source_data)
-                        source.updated_count = (source.updated_count or 0) + 1
-                    else:
-                        create_kwargs: dict = {}
-                        for field, value in mapped_values.items():
-                            if value is None:
-                                continue
-                            if field in INT_FIELDS:
-                                parsed = parse_int(value)
-                                if parsed is not None:
-                                    create_kwargs[field] = parsed
-                            elif field == "reg_date":
-                                try:
-                                    dt = datetime.strptime(value[:10], "%Y-%m-%d")
-                                    create_kwargs[field] = dt.date()
-                                except (ValueError, IndexError):
-                                    pass
-                            else:
-                                create_kwargs[field] = value
-
-                        if "name" not in create_kwargs:
-                            create_kwargs["name"] = f"Company {inn_val}"
-                        if "inn" not in create_kwargs:
-                            create_kwargs["inn"] = inn_val
-
-                        company = Company(**create_kwargs)
-                        db.add(company)
-                        await db.flush()
-
-                        source_data = ImportSourceData(
-                            source_id=source.id,
-                            company_id=company.id,
-                            row_data=raw_row,
-                            raw_row_number=idx,
-                        )
-                        db.add(source_data)
-                        source.added_count = (source.added_count or 0) + 1
 
                 source.processed_rows = idx + 1
 

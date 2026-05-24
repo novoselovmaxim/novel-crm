@@ -54,5 +54,5 @@ async def serve_frontend(full_path: str):
         return FileResponse(file_path)
     index_path = static_dir / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers={"Cache-Control": "no-cache"})
     return {"detail": "Not Found"}
