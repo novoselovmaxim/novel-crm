@@ -263,7 +263,7 @@ export default function CompanyTable() {
   const [sourceFilter, setSourceFilter] = useState('')
   const [sources, setSources] = useState<ImportSource[]>([])
   const [sortBy, setSortBy] = useState('')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [sortOrder, setSortOrder] = useState('desc')
   const [orgFormFilter, setOrgFormFilter] = useState('')
   const [activityFilter, setActivityFilter] = useState('')
   const [orgForms, setOrgForms] = useState<string[]>([])
@@ -356,12 +356,23 @@ export default function CompanyTable() {
   }
 
   const toggleSort = (field: string) => {
-    if (sortBy === field) {
-      setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
+    const fields = sortBy ? sortBy.split(',') : []
+    const orders = sortOrder ? sortOrder.split(',') : []
+    const idx = fields.indexOf(field)
+    if (idx >= 0) {
+      const cur = orders[idx]
+      if (cur === 'desc') {
+        orders[idx] = 'asc'
+      } else {
+        fields.splice(idx, 1)
+        orders.splice(idx, 1)
+      }
     } else {
-      setSortBy(field)
-      setSortOrder('desc')
+      fields.push(field)
+      orders.push('desc')
     }
+    setSortBy(fields.join(','))
+    setSortOrder(orders.join(','))
     setPage(1)
   }
 
@@ -397,11 +408,12 @@ export default function CompanyTable() {
           <select
             value={orgFormFilter}
             onChange={(e) => { setOrgFormFilter(e.target.value); setPage(1) }}
-            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent w-24"
+            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent w-24 [&>option]:w-auto"
+            style={{ maxWidth: 'fit-content' }}
           >
             <option value="">Все ОПФ</option>
             {orgForms.map(f => (
-              <option key={f} value={f}>{ORG_FORM_SHORT[f] || f.substring(0, 10)}</option>
+              <option key={f} value={f} className="text-sm">{ORG_FORM_SHORT[f] || f}</option>
             ))}
           </select>
           <SearchableFilter value={activityFilter} onChange={(v) => { setActivityFilter(v); setPage(1) }} items={activities} placeholder="Деятельность..." />
@@ -465,6 +477,9 @@ export default function CompanyTable() {
           <div className="flex" style={{ width: TOTAL_W, minWidth: TOTAL_W }}>
             {COL_DEFS.map(col => {
               const sortable = col.key === 'revenue' || col.key === 'name'
+              const sortFields = sortBy ? sortBy.split(',') : []
+              const sortOrders = sortOrder ? sortOrder.split(',') : []
+              const si = sortFields.indexOf(col.key)
               return (
                 <div
                   key={col.key}
@@ -473,8 +488,11 @@ export default function CompanyTable() {
                   style={{ width: col.w }}
                 >
                   {col.label}
-                  {sortable && sortBy === col.key && (
-                    <span className="text-[10px]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                  {si >= 0 && (
+                    <span className="text-[10px]">{sortOrders[si] === 'asc' ? '▲' : '▼'}</span>
+                  )}
+                  {sortable && si >= 0 && sortFields.length > 1 && (
+                    <span className="text-[9px] text-muted/50">{si + 1}</span>
                   )}
                 </div>
               )
