@@ -9,15 +9,16 @@ from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import select, delete
 
-from ..database import get_db
+from ..database import get_db, engine as db_engine
 from ..models import User, Company, ImportSource, ImportSourceData
 from ..schemas import (
     UploadPreview, ImportRunRequest, ImportResult,
     ImportFieldInfo, ImportSourceResponse, ImportSourceDataItem,
     ImportTemplateCreate, ImportTemplateResponse,
+    ImportRunCreateResponse, ImportRunStatusResponse,
 )
 from ..auth import get_current_user, require_admin
 
@@ -139,7 +140,7 @@ def translit(text: str) -> str:
         "Ж": "Zh", "З": "Z", "И": "I", "Й": "Y", "К": "K", "Л": "L", "М": "M",
         "Н": "N", "О": "O", "П": "P", "Р": "R", "С": "S", "Т": "T", "У": "U",
         "Ф": "F", "Х": "Kh", "Ц": "Ts", "Ч": "Ch", "Ш": "Sh", "Щ": "Shch",
-        "Ъ": "", "Ы": "Y", "Ь": "", "Э": "E", "Ю": "Yu", "Я": "Ya",
+        "Ъ": "", "Ы": "Y", "Ь": "", "Э": "e", "Ю": "Yu", "Я": "Ya",
     }
     return "".join(mapping.get(c, c) for c in text)
 
@@ -245,7 +246,7 @@ async def upload_file(file: UploadFile = File(...), _=Depends(require_admin)):
         raise HTTPException(status_code=400, detail=f"Failed to parse Excel: {e}")
 
 
-@router.post("/run", response_model=ImportResult)
+@router.post("/run", response_model=ImportRunCreateResponse)
 async def run_import(
     req: ImportRunRequest,
     current_user: User = Depends(require_admin),
@@ -257,133 +258,202 @@ async def run_import(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found. Upload again.")
 
-    try:
-        return await _run_import(req, current_user, db, file_path)
-    finally:
-        file_path.unlink(missing_ok=True)
-
-
-async def _run_import(
-    req: ImportRunRequest,
-    current_user: User,
-    db: AsyncSession,
-    file_path: Path,
-) -> ImportResult:
-    added = 0
-    updated = 0
-    skipped = 0
-
     source = ImportSource(
         original_filename=req.original_filename,
         stored_filename=file_path.name,
         uploaded_by=current_user.id,
         column_mapping=req.mapping,
         template_name=req.template_name,
+        status="queued",
     )
     db.add(source)
     await db.flush()
+    source_id = source.id
 
     df = pd.read_excel(file_path, sheet_name=req.sheet, dtype=str)
-
-    for idx, row in df.iterrows():
-        raw_row = {str(col): clean_val(row[col]) for col in df.columns}
-        inn_val = None
-        if "inn" in req.mapping:
-            inn_val = clean_val(row.get(req.mapping["inn"]))
-
-        mapped_values: dict[str, Optional[str]] = {}
-        for db_field, excel_col in req.mapping.items():
-            mapped_values[db_field] = clean_val(row.get(excel_col))
-
-        if not inn_val:
-            skipped += 1
-            source_data = ImportSourceData(
-                source_id=source.id,
-                company_id=None,
-                row_data=raw_row,
-                raw_row_number=idx,
-            )
-            db.add(source_data)
-            continue
-
-        result = await db.execute(
-            select(Company).where(Company.inn == inn_val)
-        )
-        company = result.scalar_one_or_none()
-
-        if company:
-            for field, value in mapped_values.items():
-                if value is None:
-                    continue
-                if field == "name" and not company.name:
-                    company.name = value
-                elif field in INT_FIELDS:
-                    parsed = parse_int(value)
-                    if parsed is not None and getattr(company, field) is None:
-                        setattr(company, field, parsed)
-                elif field == "reg_date" and company.reg_date is None:
-                    try:
-                        dt = datetime.strptime(value[:10], "%Y-%m-%d")
-                        company.reg_date = dt.date()
-                    except (ValueError, IndexError):
-                        pass
-                elif field not in ("inn",) and field not in INT_FIELDS and field not in DATE_FIELDS:
-                    if getattr(company, field) is None:
-                        setattr(company, field, value)
-
-            source_data = ImportSourceData(
-                source_id=source.id,
-                company_id=company.id,
-                row_data=raw_row,
-                raw_row_number=idx,
-            )
-            db.add(source_data)
-            updated += 1
-        else:
-            create_kwargs: dict = {}
-            for field, value in mapped_values.items():
-                if value is None:
-                    continue
-                if field in INT_FIELDS:
-                    parsed = parse_int(value)
-                    if parsed is not None:
-                        create_kwargs[field] = parsed
-                elif field == "reg_date":
-                    try:
-                        dt = datetime.strptime(value[:10], "%Y-%m-%d")
-                        create_kwargs[field] = dt.date()
-                    except (ValueError, IndexError):
-                        pass
-                else:
-                    create_kwargs[field] = value
-
-            if "name" not in create_kwargs:
-                create_kwargs["name"] = f"Company {inn_val}"
-            if "inn" not in create_kwargs:
-                create_kwargs["inn"] = inn_val
-
-            company = Company(**create_kwargs)
-            db.add(company)
-            await db.flush()
-
-            source_data = ImportSourceData(
-                source_id=source.id,
-                company_id=company.id,
-                row_data=raw_row,
-                raw_row_number=idx,
-            )
-            db.add(source_data)
-            added += 1
-
-    source.status = "imported"
+    total_rows = len(df)
+    source.total_rows = total_rows
     await db.commit()
 
-    return ImportResult(
-        added=added,
-        updated=updated,
-        skipped=skipped,
-        total=added + updated + skipped,
+    task_data = {
+        "source_id": str(source_id),
+        "file_path": str(file_path),
+        "sheet": req.sheet,
+        "mapping": req.mapping,
+        "user_id": str(current_user.id),
+    }
+
+    asyncio.create_task(_run_import_background(task_data))
+
+    return ImportRunCreateResponse(
+        source_id=source_id,
+        status="queued",
+        total_rows=total_rows,
     )
+
+
+@router.get("/run/{source_id}", response_model=ImportRunStatusResponse)
+async def get_import_status(
+    source_id: uuid.UUID,
+    _=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(ImportSource).where(ImportSource.id == source_id))
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Import not found")
+
+    return ImportRunStatusResponse(
+        source_id=source.id,
+        status=source.status,
+        total_rows=source.total_rows or 0,
+        processed_rows=source.processed_rows or 0,
+        added_count=source.added_count or 0,
+        updated_count=source.updated_count or 0,
+        skipped_count=source.skipped_count or 0,
+        error_message=source.error_message,
+    )
+
+
+async def _run_import_background(task_data: dict):
+    source_id = uuid.UUID(task_data["source_id"])
+    file_path = Path(task_data["file_path"])
+    sheet = task_data["sheet"]
+    mapping: dict[str, str] = task_data["mapping"]
+    user_id = uuid.UUID(task_data["user_id"])
+
+    async_session_local = async_sessionmaker(db_engine, expire_on_commit=False)
+
+    async with async_session_local() as db:
+        try:
+            result = await db.execute(select(ImportSource).where(ImportSource.id == source_id))
+            source = result.scalar_one()
+            source.status = "processing"
+            await db.commit()
+
+            df = pd.read_excel(file_path, sheet_name=sheet, dtype=str)
+
+            for idx, row in df.iterrows():
+                raw_row = {str(col): clean_val(row[col]) for col in df.columns}
+
+                inn_val = None
+                if "inn" in mapping:
+                    inn_val = clean_val(row.get(mapping["inn"]))
+
+                mapped_values: dict[str, Optional[str]] = {}
+                for db_field, excel_col in mapping.items():
+                    mapped_values[db_field] = clean_val(row.get(excel_col))
+
+                if not inn_val:
+                    source.skipped_count = (source.skipped_count or 0) + 1
+                    source_data = ImportSourceData(
+                        source_id=source.id,
+                        company_id=None,
+                        row_data=raw_row,
+                        raw_row_number=idx,
+                    )
+                    db.add(source_data)
+                else:
+                    company_result = await db.execute(
+                        select(Company).where(Company.inn == inn_val)
+                    )
+                    company = company_result.scalar_one_or_none()
+
+                    if company:
+                        for field, value in mapped_values.items():
+                            if value is None:
+                                continue
+                            if field == "name" and not company.name:
+                                company.name = value
+                            elif field in INT_FIELDS:
+                                parsed = parse_int(value)
+                                if parsed is not None and getattr(company, field) is None:
+                                    setattr(company, field, parsed)
+                            elif field == "reg_date" and company.reg_date is None:
+                                try:
+                                    dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                    company.reg_date = dt.date()
+                                except (ValueError, IndexError):
+                                    pass
+                            elif field not in ("inn",) and field not in INT_FIELDS and field not in DATE_FIELDS:
+                                if getattr(company, field) is None:
+                                    setattr(company, field, value)
+
+                        source_data = ImportSourceData(
+                            source_id=source.id,
+                            company_id=company.id,
+                            row_data=raw_row,
+                            raw_row_number=idx,
+                        )
+                        db.add(source_data)
+                        source.updated_count = (source.updated_count or 0) + 1
+                    else:
+                        create_kwargs: dict = {}
+                        for field, value in mapped_values.items():
+                            if value is None:
+                                continue
+                            if field in INT_FIELDS:
+                                parsed = parse_int(value)
+                                if parsed is not None:
+                                    create_kwargs[field] = parsed
+                            elif field == "reg_date":
+                                try:
+                                    dt = datetime.strptime(value[:10], "%Y-%m-%d")
+                                    create_kwargs[field] = dt.date()
+                                except (ValueError, IndexError):
+                                    pass
+                            else:
+                                create_kwargs[field] = value
+
+                        if "name" not in create_kwargs:
+                            create_kwargs["name"] = f"Company {inn_val}"
+                        if "inn" not in create_kwargs:
+                            create_kwargs["inn"] = inn_val
+
+                        company = Company(**create_kwargs)
+                        db.add(company)
+                        await db.flush()
+
+                        source_data = ImportSourceData(
+                            source_id=source.id,
+                            company_id=company.id,
+                            row_data=raw_row,
+                            raw_row_number=idx,
+                        )
+                        db.add(source_data)
+                        source.added_count = (source.added_count or 0) + 1
+
+                source.processed_rows = idx + 1
+
+                if idx % 100 == 0 and idx > 0:
+                    await db.commit()
+
+            file_path.unlink(missing_ok=True)
+            source.status = "imported"
+            await db.commit()
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            source.status = "error"
+            source.error_message = str(e)[:500]
+            await db.commit()
+
+
+def process_mapped_row(
+    row: pd.Series,
+    mapping: dict[str, str],
+    df_columns: list[str],
+) -> tuple[Optional[str], dict[str, Optional[str]]]:
+    inn_val = None
+    if "inn" in mapping:
+        inn_val = clean_val(row.get(mapping["inn"]))
+
+    mapped_values: dict[str, Optional[str]] = {}
+    for db_field, excel_col in mapping.items():
+        mapped_values[db_field] = clean_val(row.get(excel_col))
+
+    return inn_val, mapped_values
 
 
 @router.get("/sources", response_model=list[ImportSourceResponse])
@@ -514,5 +584,3 @@ async def delete_template(
     await db.delete(src)
     await db.commit()
     return {"ok": True}
-
-

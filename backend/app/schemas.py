@@ -238,6 +238,12 @@ class ImportSourceResponse(BaseModel):
     column_mapping: Optional[dict]
     status: str
     template_name: Optional[str]
+    total_rows: int = 0
+    processed_rows: int = 0
+    added_count: int = 0
+    updated_count: int = 0
+    skipped_count: int = 0
+    error_message: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -254,3 +260,18 @@ class ImportResult(BaseModel):
     updated: int
     skipped: int
     total: int
+
+class ImportRunCreateResponse(BaseModel):
+    source_id: uuid.UUID
+    status: str
+    total_rows: int = 0
+
+class ImportRunStatusResponse(BaseModel):
+    source_id: uuid.UUID
+    status: str  # queued, processing, imported, error
+    total_rows: int = 0
+    processed_rows: int = 0
+    added_count: int = 0
+    updated_count: int = 0
+    skipped_count: int = 0
+    error_message: Optional[str] = None
