@@ -47,8 +47,10 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
     try {
       await api.patch(`/companies/${companyId}`, { [field]: editVal || null })
       onUpdate?.(field, editVal)
-    } catch {
-      onError?.('Не удалось сохранить')
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || 'Не удалось сохранить'
+      console.error('Save error:', msg, e)
+      onError?.(msg)
     }
   }
 
