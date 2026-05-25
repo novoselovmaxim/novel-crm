@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../api/client'
 import { Company, User } from '../types'
 import { useAuth } from '../store/auth'
@@ -39,11 +39,14 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
     setEditing(true)
   }
 
+  const savingRef = useRef(false)
   const save = async () => {
     if (!field || !companyId) return
+    if (savingRef.current) return
+    savingRef.current = true
     setEditing(false)
-    if (editVal === (rawValue ?? value ?? '')) return
-    if (editVal === '' && value === null) return
+    if (editVal === (rawValue ?? value ?? '')) { savingRef.current = false; return }
+    if (editVal === '' && value === null) { savingRef.current = false; return }
     try {
       await api.patch(`/companies/${companyId}`, { [field]: editVal || null })
       onUpdate?.(field, editVal)
@@ -51,12 +54,25 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
       const msg = e?.response?.data?.detail || e?.message || 'Не удалось сохранить'
       console.error('Save error:', msg, e)
       onError?.(msg)
+    } finally {
+      savingRef.current = false
     }
   }
 
   const cancel = () => {
     setEditing(false)
     setEditVal(rawValue ?? value ?? '')
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.stopPropagation()
+      save()
+    }
+    if (e.key === 'Escape') {
+      cancel()
+    }
   }
 
   if (editing) {
@@ -68,7 +84,7 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
           value={editVal}
           onChange={(e) => setEditVal(e.target.value)}
           onBlur={save}
-          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          onKeyDown={handleKeyDown}
           className="w-full max-w-[280px] px-2 py-0.5 bg-bg border border-accent rounded text-sm text-right focus:outline-none"
         />
       </div>
