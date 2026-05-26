@@ -6,8 +6,8 @@ import uuid
 import uuid
 
 from ..database import get_db
-from ..models import User, Company, CallLog, AuditLog, ImportSourceData
-from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, MeetingCreate
+from ..models import User, Company, CallLog, AuditLog, ImportSourceData, CompanyComment
+from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
@@ -212,6 +212,28 @@ async def update_company(
     await db.refresh(company)
     return company
 
+@router.get("/{company_id}/calls", response_model=list[CallLogResponse])
+async def list_calls(
+    company_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if current_user.role == "manager" and company.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    stmt = (
+        select(CallLog)
+        .where(CallLog.company_id == company_id)
+        .order_by(CallLog.called_at.desc())
+        .limit(50)
+    )
+    rows = await db.execute(stmt)
+    return rows.scalars().all()
+
 @router.post("/{company_id}/call", response_model=CallLogResponse)
 async def log_call(
     company_id: uuid.UUID,
@@ -242,6 +264,32 @@ async def log_call(
     await db.refresh(call_log)
     return call_log
 
+@router.delete("/{company_id}/calls/{call_id}")
+async def delete_call(
+    company_id: uuid.UUID,
+    call_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    result = await db.execute(select(CallLog).where(CallLog.id == call_id, CallLog.company_id == company_id))
+    call_log = result.scalar_one_or_none()
+    if not call_log:
+        raise HTTPException(status_code=404, detail="Call log not found")
+
+    if current_user.role not in ("admin", "lead") and call_log.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    await db.delete(call_log)
+    if company.call_count > 0:
+        company.call_count -= 1
+    await db.commit()
+    return {"message": "Call log deleted"}
+
 @router.post("/{company_id}/meeting")
 async def schedule_meeting(
     company_id: uuid.UUID,
@@ -268,6 +316,94 @@ async def schedule_meeting(
     await db.refresh(call_log)
     return {"status": "ok", "message": f"Meeting scheduled for {request.meeting_date} at {request.meeting_time}"}
 
+@router.get("/{company_id}/comments", response_model=list[CommentResponse])
+async def list_comments(
+    company_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if current_user.role == "manager" and company.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    stmt = (
+        select(CompanyComment, User.name)
+        .join(User, CompanyComment.user_id == User.id)
+        .where(CompanyComment.company_id == company_id)
+        .order_by(CompanyComment.created_at.asc())
+    )
+    rows = await db.execute(stmt)
+    comments = []
+    for row in rows.all():
+        comment, user_name = row
+        comments.append(CommentResponse(
+            id=comment.id,
+            company_id=comment.company_id,
+            user_id=comment.user_id,
+            user_name=user_name,
+            text=comment.text,
+            created_at=comment.created_at
+        ))
+    return comments
+
+@router.post("/{company_id}/comments", response_model=CommentResponse, status_code=201)
+async def create_comment(
+    company_id: uuid.UUID,
+    request: CommentCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if current_user.role == "manager" and company.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    comment = CompanyComment(
+        company_id=company_id,
+        user_id=current_user.id,
+        text=request.text
+    )
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+    return CommentResponse(
+        id=comment.id,
+        company_id=comment.company_id,
+        user_id=comment.user_id,
+        user_name=current_user.name,
+        text=comment.text,
+        created_at=comment.created_at
+    )
+
+@router.delete("/{company_id}/comments/{comment_id}")
+async def delete_comment(
+    company_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    result = await db.execute(select(CompanyComment).where(CompanyComment.id == comment_id, CompanyComment.company_id == company_id))
+    comment = result.scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if current_user.role not in ("admin", "lead") and comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    await db.delete(comment)
+    await db.commit()
+    return {"message": "Comment deleted"}
+
 @router.patch("/{company_id}/assign", response_model=CompanyResponse)
 async def assign_company(
     company_id: uuid.UUID,
@@ -281,6 +417,23 @@ async def assign_company(
         raise HTTPException(status_code=404, detail="Company not found")
     
     company.assigned_to = request.user_id
+    await db.commit()
+    await db.refresh(company)
+    return company
+
+@router.patch("/{company_id}/status", response_model=CompanyResponse)
+async def update_company_status(
+    company_id: uuid.UUID,
+    request: StatusUpdateRequest,
+    current_user: User = Depends(require_admin_or_lead),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    company.call_status = request.call_status
     await db.commit()
     await db.refresh(company)
     return company

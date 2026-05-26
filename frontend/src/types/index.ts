@@ -88,3 +88,12 @@ export interface CallLog {
   notes: string | null
   called_at: string
 }
+
+export interface Comment {
+  id: string
+  company_id: string
+  user_id: string
+  user_name: string | null
+  text: string
+  created_at: string
+}

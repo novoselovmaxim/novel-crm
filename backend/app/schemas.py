@@ -195,8 +195,25 @@ class DashboardMetrics(BaseModel):
     archived: int
     unprocessed: int
 
+class CommentCreate(BaseModel):
+    text: str
+
+class CommentResponse(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: Optional[str] = None
+    text: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class AssignRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None
+
+class StatusUpdateRequest(BaseModel):
+    call_status: str
 
 class ImportFieldInfo(BaseModel):
     key: str
