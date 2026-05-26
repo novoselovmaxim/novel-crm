@@ -234,20 +234,41 @@ function getOrgForm(c: Company) {
   return map[c.org_form] || c.org_form.substring(0, 10)
 }
 
+const STORAGE_KEY = 'crm_table_state'
+
+function loadSavedState<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return key in parsed ? parsed[key] : fallback
+    }
+  } catch {}
+  return fallback
+}
+
+function saveTableState(state: Record<string, unknown>) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const prev = raw ? JSON.parse(raw) : {}
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...prev, ...state }))
+  } catch {}
+}
+
 export default function CompanyTable() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [regionFilter, setRegionFilter] = useState('')
-  const [managerFilter, setManagerFilter] = useState('')
-  const [archived, setArchived] = useState(false)
+  const [searchInput, setSearchInput] = useState(() => loadSavedState('searchInput', ''))
+  const [search, setSearch] = useState(() => loadSavedState('search', ''))
+  const [statusFilter, setStatusFilter] = useState(() => loadSavedState('statusFilter', ''))
+  const [regionFilter, setRegionFilter] = useState(() => loadSavedState('regionFilter', ''))
+  const [managerFilter, setManagerFilter] = useState(() => loadSavedState('managerFilter', ''))
+  const [archived, setArchived] = useState(() => loadSavedState('archived', false))
   const [showCalendar, setShowCalendar] = useState(false)
   const [regions, setRegions] = useState<string[]>([])
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(() => loadSavedState('pageSize', 50))
   const [total, setTotal] = useState(0)
   const [managers, setManagers] = useState<User[]>([])
   const ORG_FORM_SHORT: Record<string, string> = {
@@ -260,12 +281,12 @@ export default function CompanyTable() {
     'Некоммерческая организация': 'НО',
   }
 
-  const [sourceFilter, setSourceFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState(() => loadSavedState('sourceFilter', ''))
   const [sources, setSources] = useState<ImportSource[]>([])
-  const [sortBy, setSortBy] = useState('')
-  const [sortOrder, setSortOrder] = useState('desc')
-  const [orgFormFilter, setOrgFormFilter] = useState('')
-  const [activityFilter, setActivityFilter] = useState('')
+  const [sortBy, setSortBy] = useState(() => loadSavedState('sortBy', ''))
+  const [sortOrder, setSortOrder] = useState(() => loadSavedState('sortOrder', 'desc'))
+  const [orgFormFilter, setOrgFormFilter] = useState(() => loadSavedState('orgFormFilter', ''))
+  const [activityFilter, setActivityFilter] = useState(() => loadSavedState('activityFilter', ''))
   const [orgForms, setOrgForms] = useState<string[]>([])
   const [activities, setActivities] = useState<string[]>([])
   const currentUser = useAuth(s => s.user)
@@ -322,6 +343,17 @@ export default function CompanyTable() {
     }
     fetchCompanies()
   }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveTableState({
+        searchInput, search, statusFilter, regionFilter, managerFilter,
+        archived, sourceFilter, sortBy, sortOrder, orgFormFilter,
+        activityFilter, pageSize
+      })
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [searchInput, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, pageSize])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -552,7 +584,32 @@ export default function CompanyTable() {
 <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[9].w }}>{formatNumericString(c.export_turnover)}</div>
                   <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[10].w }} title={c.director || ''}>{c.director || '—'}</div>
                   <div className="px-3 text-center shrink-0 flex items-center justify-center" style={{ width: COL_DEFS[11].w }}>{c.call_count}</div>
-                  <div className="px-3 shrink-0 flex items-center" style={{ width: COL_DEFS[12].w }}><StatusBadge status={c.call_status} /></div>
+                  <div className="px-1 shrink-0 flex items-center" style={{ width: COL_DEFS[12].w }}>
+                    {isAdminOrLead ? (
+                      <select
+                        value={c.call_status}
+                        onClick={e => e.stopPropagation()}
+                        onChange={async (e) => {
+                          e.stopPropagation()
+                          const val = e.target.value
+                          const prevStatus = c.call_status
+                          setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, call_status: val } : p))
+                          try {
+                            await api.patch(`/companies/${c.id}/status`, { call_status: val })
+                          } catch {
+                            setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, call_status: prevStatus } : p))
+                          }
+                        }}
+                        className="w-full px-1 py-1 bg-bg border border-muted/20 rounded text-xs focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                      >
+                        {STATUSES.filter(s => s.value).map(s => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <StatusBadge status={c.call_status} />
+                    )}
+                  </div>
                   <div className="px-1 shrink-0 flex items-center" style={{ width: COL_DEFS[13].w }}>
                     {isAdminOrLead ? (
                       <select

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/client'
-import { Company, User } from '../types'
+import { Company, User, Comment, CallLog } from '../types'
 import { useAuth } from '../store/auth'
 import CalendarPicker from './CalendarPicker'
 import CalendarModal from './CalendarModal'
@@ -163,6 +163,10 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [existingMeeting, setExistingMeeting] = useState<any>(null)
   const [cancelling, setCancelling] = useState(false)
   const [sourceData, setSourceData] = useState<any[]>([])
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [sendingComment, setSendingComment] = useState(false)
+  const [callLogs, setCallLogs] = useState<CallLog[]>([])
 
   useEffect(() => {
     api.get(`/import/data`, { params: { company_id: company.id } }).then(({ data }) => {
@@ -176,6 +180,28 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
       setSourceData(Object.values(grouped))
     }).catch(() => setSourceData([]))
   }, [company.id])
+
+  useEffect(() => {
+    api.get(`/companies/${company.id}/comments`).then(({ data }) => setComments(data)).catch(() => setComments([]))
+  }, [company.id])
+
+  useEffect(() => {
+    api.get(`/companies/${company.id}/calls`).then(({ data }) => setCallLogs(data)).catch(() => setCallLogs([]))
+  }, [company.id])
+
+  const sendComment = async () => {
+    if (!commentText.trim() || sendingComment) return
+    setSendingComment(true)
+    try {
+      const { data } = await api.post(`/companies/${company.id}/comments`, { text: commentText.trim() })
+      setComments(prev => [...prev, data])
+      setCommentText('')
+    } catch {
+      // ignore
+    } finally {
+      setSendingComment(false)
+    }
+  }
 
   const NUM_FIELDS = new Set(['revenue', 'profit', 'employees', 'capital', 'balance'])
   const [saveError, setSaveError] = useState('')
@@ -201,6 +227,10 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
         notes,
         next_call_date: nextCallDate || null,
       })
+      if (notes.trim()) {
+        const { data } = await api.post(`/companies/${company.id}/comments`, { text: notes.trim() })
+        setComments(prev => [...prev, data])
+      }
       setNotes('')
       window.location.reload()
     } catch {
@@ -355,6 +385,71 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           <button onClick={() => handleSaveCall()} disabled={saving} className="w-full py-2 mt-3 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
             {saving ? 'Сохранение...' : 'Сохранить звонок'}
           </button>
+          {callLogs.length > 0 && (
+            <div className="mt-3 space-y-2 max-h-32 overflow-y-auto">
+              {callLogs.map(cl => (
+                <div key={cl.id} className="text-xs border-l-2 border-muted/20 pl-2 group">
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted">{new Date(cl.called_at).toLocaleString('ru-RU')} — {cl.call_status}</span>
+                    {(currentUser?.role === 'admin' || currentUser?.role === 'lead' || cl.user_id === currentUser?.id) && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.delete(`/companies/${company.id}/calls/${cl.id}`)
+                            setCallLogs(prev => prev.filter(x => x.id !== cl.id))
+                          } catch { /* ignore */ }
+                        }}
+                        className="ml-auto text-muted/30 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                      >✕</button>
+                    )}
+                  </div>
+                  {cl.notes && <p className="text-text/80 mt-0.5">{cl.notes}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* Comments */}
+        <Section title="Комментарии">
+          <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+            {comments.length === 0 && <p className="text-xs text-muted">Нет комментариев</p>}
+            {comments.map(c => {
+              const canDelete = currentUser?.role === 'admin' || currentUser?.role === 'lead' || c.user_id === currentUser?.id
+              return (
+                <div key={c.id} className="text-xs border-l-2 border-accent/30 pl-2 group">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="font-semibold text-text">{c.user_name || '—'}</span>
+                    <span className="text-muted">{new Date(c.created_at).toLocaleString('ru-RU')}</span>
+                    {canDelete && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.delete(`/companies/${company.id}/comments/${c.id}`)
+                            setComments(prev => prev.filter(x => x.id !== c.id))
+                          } catch { /* ignore */ }
+                        }}
+                        className="ml-auto text-muted/30 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                      >✕</button>
+                    )}
+                  </div>
+                  <p className="text-text/90 whitespace-pre-wrap">{c.text}</p>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendComment() } }}
+              className="flex-1 px-2 py-1.5 bg-bg border border-muted/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              placeholder="Написать комментарий..."
+            />
+            <button onClick={sendComment} disabled={!commentText.trim() || sendingComment} className="px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-xs font-medium rounded transition-colors">
+              {sendingComment ? '...' : '→'}
+            </button>
+          </div>
         </Section>
 
         {/* Meeting */}
@@ -477,14 +572,9 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           <Field label="Сумма исков" value={company.arbitrage_amount != null ? `${Number(company.arbitrage_amount).toLocaleString('ru-RU')} ₽` : null} field="arbitrage_amount" companyId={company.id} rawValue={company.arbitrage_amount || ''} onUpdate={handleFieldUpdate} onError={setSaveError} />
           <Field label="Лицензии" value={company.licenses} field="licenses" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
           <Field label="Реестры" value={company.registries} field="registries" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
-          <Field label="Комментарий" value={company.comment_static} field="comment_static" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
         </Section>
 
-        {saveError && (
-        <div className="px-4 py-2 bg-error/10 border-b border-error/20 text-xs text-error">{saveError}</div>
-      )}
-
-      {/* Source Data */}
+        {/* Source Data */}
         {sourceData.length > 0 && (
           <Section title="Данные из источников">
             {sourceData.map((group: any) => (
@@ -508,6 +598,10 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
               </div>
             ))}
           </Section>
+        )}
+
+        {saveError && (
+          <div className="px-4 py-2 bg-error/10 border-b border-error/20 text-xs text-error">{saveError}</div>
         )}
 
         {/* Meta */}
