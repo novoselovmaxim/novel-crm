@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import api from '../api/client'
 import StatusBadge from './StatusBadge'
-import StatusDropdown from './StatusDropdown'
 import CompanyCard from './CompanyCard'
 import CalendarModal from './CalendarModal'
 import { Company, User } from '../types'
@@ -11,6 +10,17 @@ import { useAuth } from '../store/auth'
 interface ImportSource {
   id: string
   original_filename: string
+}
+
+const STATUS_DOT: Record<string, string> = {
+  new: 'bg-gray-500',
+  not_reached: 'bg-orange-500',
+  no_answer: 'bg-red-500',
+  callback: 'bg-blue-500',
+  in_progress: 'bg-yellow-500',
+  interested: 'bg-green-500',
+  meeting: 'bg-purple-500',
+  refused: 'bg-gray-600',
 }
 
 const STATUSES = [
@@ -659,20 +669,32 @@ export default function CompanyTable() {
 <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[9].w }}>{formatNumericString(c.export_turnover)}</div>
                   <div className="px-3 truncate shrink-0 flex items-center" style={{ width: COL_DEFS[10].w }} title={c.director || ''}>{c.director || '—'}</div>
                   <div className="px-3 text-center shrink-0 flex items-center justify-center" style={{ width: COL_DEFS[11].w }}>{c.call_count}</div>
-                  <div className="px-1 shrink-0 flex items-center" style={{ width: COL_DEFS[12].w }} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                  <div className="px-1 shrink-0 flex items-center gap-1" style={{ width: COL_DEFS[12].w }}>
                     {isAdminOrLead ? (
-                      <StatusDropdown
-                        value={c.call_status}
-                        onChange={async (val) => {
-                          const prevStatus = c.call_status
-                          setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, call_status: val } : p))
-                          try {
-                            await api.patch(`/companies/${c.id}/status`, { call_status: val })
-                          } catch {
-                            setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, call_status: prevStatus } : p))
-                          }
-                        }}
-                      />
+                      <>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[c.call_status] || 'bg-gray-500'}`} />
+                        <select
+                          value={c.call_status}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => e.stopPropagation()}
+                          onChange={async (e) => {
+                            e.stopPropagation()
+                            const val = e.target.value
+                            const prevStatus = c.call_status
+                            setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, call_status: val } : p))
+                            try {
+                              await api.patch(`/companies/${c.id}/status`, { call_status: val })
+                            } catch {
+                              setCompanies(prev => prev.map(p => p.id === c.id ? { ...p, call_status: prevStatus } : p))
+                            }
+                          }}
+                          className="w-full px-1 py-1 bg-bg border border-muted/20 rounded text-xs focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                        >
+                          {STATUSES.filter(s => s.value).map(s => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+                      </>
                     ) : (
                       <StatusBadge status={c.call_status} />
                     )}
