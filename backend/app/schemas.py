@@ -215,6 +215,16 @@ class AssignRequest(BaseModel):
 class StatusUpdateRequest(BaseModel):
     call_status: str
 
+class BulkStatusRequest(BaseModel):
+    company_ids: list[uuid.UUID]
+    call_status: str
+
+class BulkStatusResponse(BaseModel):
+    updated: int
+
+class ExportRequest(BaseModel):
+    company_ids: list[uuid.UUID]
+
 class ImportFieldInfo(BaseModel):
     key: str
     label: str
