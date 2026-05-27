@@ -24,6 +24,7 @@ const STATUSES = [
   { value: 'refused', label: 'Отказ' },
 ]
 
+const CHECKBOX_W = 40
 const PAGE_SIZES = [30, 50, 100]
 
 const COL_DEFS = [
@@ -289,8 +290,23 @@ export default function CompanyTable() {
   const [activityFilter, setActivityFilter] = useState(() => loadSavedState('activityFilter', ''))
   const [orgForms, setOrgForms] = useState<string[]>([])
   const [activities, setActivities] = useState<string[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [refreshKey, setRefreshKey] = useState(0)
   const currentUser = useAuth(s => s.user)
   const isAdminOrLead = currentUser?.role === 'admin' || currentUser?.role === 'lead'
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds(prev => prev.size === companies.length ? new Set() : new Set(companies.map(c => c.id)))
+  }
 
   const handleMeetingClick = async (companyId: string) => {
     try {
@@ -342,7 +358,7 @@ export default function CompanyTable() {
       }
     }
     fetchCompanies()
-  }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter])
+  }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, refreshKey])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -522,12 +538,67 @@ export default function CompanyTable() {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="px-3 py-2 bg-accent/10 border-b border-accent/20 flex items-center gap-3 shrink-0">
+          <span className="text-sm font-medium">Выбрано: {selectedIds.size}</span>
+          <select
+            value=""
+            onChange={async (e) => {
+              const status = e.target.value
+              if (!status) return
+              try {
+                await api.post('/companies/bulk-status', { company_ids: [...selectedIds], call_status: status })
+                setSelectedIds(new Set())
+                setRefreshKey(k => k + 1)
+              } catch {
+                alert('Ошибка при обновлении статуса')
+              }
+            }}
+            className="px-2 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">Изменить статус</option>
+            {STATUSES.filter(s => s.value).map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={async () => {
+              try {
+                const response = await api.post('/companies/export', { company_ids: [...selectedIds] }, { responseType: 'blob' })
+                const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8' }))
+                const link = document.createElement('a')
+                link.href = url
+                link.setAttribute('download', 'companies.csv')
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+                URL.revokeObjectURL(url)
+              } catch {
+                alert('Ошибка при экспорте')
+              }
+            }}
+            className="px-3 py-1.5 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors"
+          >
+            Экспорт CSV
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="px-3 py-1.5 text-sm text-muted hover:text-text transition-colors"
+          >
+            Снять выделение
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header */}
-        <div ref={headerRef} className="overflow-x-auto overflow-y-hidden shrink-0" style={{ scrollbarWidth: 'none' }}>
-          <div className="flex" style={{ width: TOTAL_W, minWidth: TOTAL_W }}>
-            {COL_DEFS.map(col => {
+          <div ref={headerRef} className="overflow-x-auto overflow-y-hidden shrink-0" style={{ scrollbarWidth: 'none' }}>
+            <div className="flex" style={{ width: TOTAL_W + CHECKBOX_W, minWidth: TOTAL_W + CHECKBOX_W }}>
+              <div className="px-3 shrink-0 flex items-center" style={{ width: CHECKBOX_W }}>
+                <input type="checkbox" checked={companies.length > 0 && selectedIds.size === companies.length} onChange={toggleSelectAll} onClick={e => e.stopPropagation()} className="cursor-pointer accent-accent" />
+              </div>
+              {COL_DEFS.map(col => {
               const sortable = col.key === 'revenue' || col.key === 'name'
               const sortFields = sortBy ? sortBy.split(',') : []
               const sortOrders = sortOrder ? sortOrder.split(',') : []
@@ -553,20 +624,23 @@ export default function CompanyTable() {
         </div>
 
         {/* Body */}
-        <div ref={scrollRef} className="flex-1 overflow-auto">
-          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: TOTAL_W, minWidth: TOTAL_W }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const c = companies[virtualRow.index]
-              return (
-                <div
-                  key={c.id}
-                  ref={virtualizer.measureElement}
-                  data-index={virtualRow.index}
-                  onClick={() => setSelectedCompany(c)}
-                  className="absolute left-0 right-0 flex hover:bg-surfaceHover cursor-pointer border-b border-muted/5"
-                  style={{ transform: `translateY(${virtualRow.start}px)`, height: '40px' }}
-                >
-                  <div className="px-3 font-medium truncate shrink-0 flex items-center" style={{ width: COL_DEFS[0].w }} title={c.name}>{c.name}</div>
+          <div ref={scrollRef} className="flex-1 overflow-auto">
+            <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative', width: TOTAL_W + CHECKBOX_W, minWidth: TOTAL_W + CHECKBOX_W }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const c = companies[virtualRow.index]
+                return (
+                  <div
+                    key={c.id}
+                    ref={virtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    onClick={() => setSelectedCompany(c)}
+                    className="absolute left-0 right-0 flex hover:bg-surfaceHover cursor-pointer border-b border-muted/5"
+                    style={{ transform: `translateY(${virtualRow.start}px)`, height: '40px', width: TOTAL_W + CHECKBOX_W, minWidth: TOTAL_W + CHECKBOX_W }}
+                  >
+                    <div className="px-3 shrink-0 flex items-center" style={{ width: CHECKBOX_W }}>
+                      <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} onClick={e => e.stopPropagation()} className="cursor-pointer accent-accent" />
+                    </div>
+                    <div className="px-3 font-medium truncate shrink-0 flex items-center" style={{ width: COL_DEFS[0].w }} title={c.name}>{c.name}</div>
                   <div className="px-3 font-mono text-xs truncate shrink-0 flex items-center" style={{ width: COL_DEFS[1].w }} title={c.inn}>{c.inn}</div>
                   <div className="px-3 text-muted truncate shrink-0 flex items-center" style={{ width: COL_DEFS[2].w }} title={c.region || ''}>{c.region || '—'}</div>
                   <div className="px-3 text-muted text-xs truncate shrink-0 flex items-center" style={{ width: COL_DEFS[3].w }} title={c.org_form || ''}>{getOrgForm(c)}</div>
@@ -588,6 +662,7 @@ export default function CompanyTable() {
                     {isAdminOrLead ? (
                       <select
                         value={c.call_status}
+                        onMouseDown={e => e.stopPropagation()}
                         onClick={e => e.stopPropagation()}
                         onChange={async (e) => {
                           e.stopPropagation()

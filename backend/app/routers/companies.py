@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, distinct, case
 from typing import Optional
-import uuid
+import csv
+import io
 import uuid
 
 from ..database import get_db
 from ..models import User, Company, CallLog, AuditLog, ImportSourceData, CompanyComment
-from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, MeetingCreate, CommentCreate, CommentResponse
+from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
@@ -452,3 +454,56 @@ async def delete_company(
     company.is_deleted = True
     await db.commit()
     return {"message": "Company deleted"}
+
+@router.post("/bulk-status", response_model=BulkStatusResponse)
+async def bulk_update_status(
+    request: BulkStatusRequest,
+    current_user: User = Depends(require_admin_or_lead),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Company).where(
+            Company.id.in_(request.company_ids),
+            Company.is_deleted == False
+        )
+    )
+    companies = result.scalars().all()
+
+    if not companies:
+        raise HTTPException(status_code=404, detail="No companies found")
+
+    for company in companies:
+        company.call_status = request.call_status
+
+    await db.commit()
+    return BulkStatusResponse(updated=len(companies))
+
+@router.post("/export")
+async def export_companies(
+    request: ExportRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(Company).where(
+        Company.id.in_(request.company_ids),
+        Company.is_deleted == False
+    )
+
+    if current_user.role == "manager":
+        query = query.where(Company.assigned_to == current_user.id)
+
+    result = await db.execute(query)
+    companies = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    columns = [c.name for c in Company.__table__.columns]
+    writer.writerow(columns)
+    for company in companies:
+        writer.writerow([getattr(company, c) for c in columns])
+
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=companies.csv"}
+    )
