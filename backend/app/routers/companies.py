@@ -8,7 +8,7 @@ import io
 import uuid
 
 from ..database import get_db
-from ..models import User, Company, CallLog, AuditLog, ImportSourceData, CompanyComment
+from ..models import User, Company, CallLog, AuditLog, ImportSourceData, CompanyComment, Meeting
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 
@@ -304,6 +304,23 @@ async def schedule_meeting(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     
+    hour = int(request.meeting_time.split(':')[0])
+    
+    conflict = await db.execute(
+        select(Meeting).where(Meeting.date == request.meeting_date, Meeting.hour == hour)
+    )
+    if conflict.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Это время уже занято другой встречей")
+    
+    meeting = Meeting(
+        company_id=company_id,
+        booked_by=current_user.id,
+        date=request.meeting_date,
+        hour=hour,
+        notes=request.notes,
+    )
+    db.add(meeting)
+    
     company.call_status = "meeting"
     company.next_call_date = request.meeting_date
     
@@ -315,8 +332,8 @@ async def schedule_meeting(
     )
     db.add(call_log)
     await db.commit()
-    await db.refresh(call_log)
-    return {"status": "ok", "message": f"Meeting scheduled for {request.meeting_date} at {request.meeting_time}"}
+    await db.refresh(meeting)
+    return {"status": "ok", "message": f"Meeting scheduled for {request.meeting_date} at {request.meeting_time}", "meeting_id": str(meeting.id)}
 
 @router.get("/{company_id}/comments", response_model=list[CommentResponse])
 async def list_comments(
