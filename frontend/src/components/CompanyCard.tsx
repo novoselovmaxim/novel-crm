@@ -161,6 +161,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [bookedMeetingId, setBookedMeetingId] = useState<string | null>(null)
   const [savingMeeting, setSavingMeeting] = useState(false)
   const [existingMeeting, setExistingMeeting] = useState<any>(null)
+  const [meetingLoading, setMeetingLoading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [sourceData, setSourceData] = useState<any[]>([])
   const [comments, setComments] = useState<Comment[]>([])
@@ -213,9 +214,11 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
 
   useEffect(() => {
     if (company.call_status === 'meeting') {
+      setMeetingLoading(true)
       api.get(`/availability/meetings/by-company/${company.id}`)
         .then(({ data }) => setExistingMeeting(data))
         .catch(() => setExistingMeeting(null))
+        .finally(() => setMeetingLoading(false))
     }
   }, [company.id, company.call_status])
 
@@ -482,7 +485,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                 {savingMeeting ? 'Сохранение...' : 'Сохранить встречу'}
               </button>
             </>
-          ) : company.call_status === 'meeting' ? (
+          ) : company.call_status === 'meeting' && meetingLoading ? (
             <p className="text-sm text-muted">Загрузка...</p>
           ) : (
             <>
