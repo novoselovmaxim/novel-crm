@@ -1,10 +1,10 @@
 import os
+import asyncio
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Request, HTTPException
 from sqlalchemy import select, func
-from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Bot, Update
 
 from app.database import async_session
 from app.models import User, Company, CallLog, TgToken
@@ -13,12 +13,13 @@ from app.notifications import notifier
 logger = logging.getLogger(__name__)
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "7700904608:AAEqNYwQ2pMUXsmidO9P0fkLzvgFHbI4rOY")
-TG_WEBHOOK_URL = os.getenv("TG_WEBHOOK_URL", "https://novel.maxnov.ru/api/telegram/webhook")
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram-webhook"])
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
+_polling_task = None
+
+async def start(update: Update, context):
+    args = context.args if hasattr(context, 'args') else []
     token = args[0] if args else None
 
     if token:
@@ -59,7 +60,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Справка"
     )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def help_command(update: Update, context):
     await update.message.reply_text(
         "Доступные команды:\n\n"
         "/start - Запустить бота\n"
@@ -69,7 +70,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Показать справку"
     )
 
-async def unbind(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unbind(update: Update, context):
     chat_id = update.effective_chat.id
     async with async_session() as db:
         result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
@@ -82,7 +83,7 @@ async def unbind(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Аккаунт не найден. Возможно, он уже отвязан.")
 
-async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def tasks_command(update: Update, context):
     chat_id = update.effective_chat.id
     async with async_session() as db:
         result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
@@ -107,14 +108,10 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         lines = [f"Задач на сегодня: {len(companies)}"]
         for c in companies:
-            status_icon = {
-                "new": "new", "callback": "callback", "in_progress": "in_progress",
-                "interested": "interested", "meeting": "meeting"
-            }.get(c.call_status, c.call_status)
             lines.append(f"{c.name} (ИНН {c.inn})")
         await update.message.reply_text("\n".join(lines))
 
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stats_command(update: Update, context):
     chat_id = update.effective_chat.id
     async with async_session() as db:
         result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
@@ -158,53 +155,88 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Всего в работе: {total_assigned}"
         )
 
-_application = None
+_handlers = {}
 
-def build_application():
-    app = ApplicationBuilder().token(TG_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("tasks", tasks_command))
-    app.add_handler(CommandHandler("stats", stats_command))
-    app.add_handler(CommandHandler("unbind", unbind))
-    return app
+async def _handle_update(bot, update):
+    if not update.message or not update.message.text:
+        return
+
+    text = update.message.text.strip()
+    if not text.startswith('/'):
+        return
+
+    parts = text.split()
+    command = parts[0].lower().lstrip('/')
+
+    context = type('Context', (), {'args': parts[1:]})()
+    context.bot = bot
+
+    handler = _handlers.get(command)
+    if handler:
+        try:
+            await handler(update, context)
+        except Exception as e:
+            logger.error(f"Error handling /{command}: {e}")
+            try:
+                await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
+            except Exception:
+                pass
+    else:
+        await update.message.reply_text(
+            "Неизвестная команда. Используйте /help для списка команд."
+        )
+
+async def _polling_loop(bot):
+    offset = 0
+    while True:
+        try:
+            updates = await bot.get_updates(
+                offset=offset,
+                timeout=30,
+                allowed_updates=['message']
+            )
+            for update in updates:
+                offset = update.update_id + 1
+                await _handle_update(bot, update)
+        except Exception as e:
+            logger.error(f"Polling error: {e}")
+            await asyncio.sleep(5)
 
 async def start_polling():
-    global _application
+    global _polling_task
+    bot = Bot(token=TG_BOT_TOKEN)
     try:
-        _application = build_application()
-        await _application.initialize()
-        await _application.updater.start_polling()
-        try:
-            await _application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Telegram webhook deleted, polling started")
-        except Exception as e:
-            logger.warning(f"Could not delete webhook: {e}")
-        logger.info("Telegram bot polling started")
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Telegram webhook deleted")
     except Exception as e:
-        logger.error(f"Failed to start Telegram polling: {e}")
-        _application = None
+        logger.warning(f"Could not delete webhook: {e}")
+
+    _handlers['start'] = start
+    _handlers['help'] = help_command
+    _handlers['tasks'] = tasks_command
+    _handlers['stats'] = stats_command
+    _handlers['unbind'] = unbind
+
+    _polling_task = asyncio.create_task(_polling_loop(bot))
+    logger.info("Telegram bot polling started")
 
 async def stop_polling():
-    global _application
-    if _application:
+    global _polling_task
+    if _polling_task:
+        _polling_task.cancel()
         try:
-            await _application.updater.stop()
-            await _application.stop()
-            await _application.shutdown()
-            logger.info("Telegram bot polling stopped")
-        except Exception as e:
-            logger.error(f"Error stopping Telegram polling: {e}")
-        _application = None
+            await _polling_task
+        except Exception:
+            pass
+        _polling_task = None
+        logger.info("Telegram bot polling stopped")
 
 @router.post("/webhook")
 async def telegram_webhook(request: Request):
-    if not _application:
-        return {"status": "not_initialized"}
     try:
         update_data = await request.json()
-        update = Update.de_json(update_data, _application.bot)
-        await _application.process_update(update)
+        update = Update.de_json(update_data, Bot(token=TG_BOT_TOKEN))
+        await _handle_update(Bot(token=TG_BOT_TOKEN), update)
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Error processing Telegram update: {e}")
@@ -212,4 +244,4 @@ async def telegram_webhook(request: Request):
 
 @router.post("/setup-webhook")
 async def setup_webhook():
-    return {"status": "polling_mode", "detail": "Bot is running in polling mode. Use delete-webhook to clear Telegram webhook."}
+    return {"status": "polling_mode", "detail": "Bot is running in polling mode."}
