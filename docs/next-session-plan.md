@@ -21,6 +21,10 @@
 - **Client timezone**: Region→UTC mapping, display in CompanyCard with working/border/off indicator ✅
 - **Deploy**: Docker Compose, FastAPI serves static frontend, nginx on host, SSL via Let's Encrypt, port 3020
 
+### Known issues
+- **Telegram bot on polling**: Webhook blocked by Russian firewall → switched to `Bot.get_updates()` polling in background task. Works from VPS (outbound), but `docker logs` doesn't show polling logs — logger has no handler; needs `logging.basicConfig` or uvicorn logger integration
+- **Telegram bot on webhook** (`/api/telegram/webhook` endpoint kept as fallback): `{"detail":"'date'"}` error — webhook endpoint receives requests but Telegram's `Connection timed out` means Telegram servers can't reach the VPS
+
 ### Partially implemented 🔶
 - **Dashboard**: Only basic `/dashboard/me` metrics. No funnel, team dashboard, stale contacts, quick presets
 
@@ -62,6 +66,14 @@
 - `frontend/src/utils/timezone.ts` — 40+ Russian regions mapped to UTC offsets
 - `TimeZoneBlock` component in `CompanyCard.tsx` — shows `UTC+X · HH:MM (working/border/off)` with color indicator
 
+### Step 5: Webhook → Polling Migration ✅
+- Telegram webhook blocked: Telegram servers can't connect to VPS in Russia (`Connection timed out`)
+- Rewrote `telegram_webhook.py`: removed `Application`/`Updater` from `python-telegram-bot`, replaced with direct `Bot.get_updates()` in `asyncio.create_task` background task
+- `start_polling()` / `stop_polling()` in `main.py` startup/shutdown
+- Command handlers kept as plain async functions, dispatched via `_handlers` dict
+- `/api/telegram/webhook` kept as fallback
+- Webhook deleted via `bot.delete_webhook(drop_pending_updates=True)` on startup
+
 ---
 
 ## Deployment
@@ -85,9 +97,9 @@ docker compose up -d
 |------|------|
 | `backend/app/models.py` | +TgToken model |
 | `backend/app/routers/auth.py` | +tg-link, tg-bind, tg-unbind |
-| `backend/app/telegram_webhook.py` | +/tasks, /stats, /unbind, token /start |
+| `backend/app/telegram_webhook.py` | +/tasks, /stats, /unbind, token /start; then switched webhook→polling, removed Application/Updater |
 | `backend/app/scheduler.py` | New: APScheduler, briefs, reminders, stale check |
-| `backend/app/main.py` | +scheduler init on startup |
+| `backend/app/main.py` | +scheduler init on startup; +start_polling/stop_polling |
 | `backend/app/routers/companies.py` | +notifications on assign & meeting status |
 | `backend/app/schemas.py` | +tg fields in UserResponse |
 | `backend/requirements.txt` | +apscheduler |
