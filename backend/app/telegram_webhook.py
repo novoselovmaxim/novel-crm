@@ -158,57 +158,58 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Всего в работе: {total_assigned}"
         )
 
-class TelegramWebhookHandler:
-    def __init__(self):
-        self.application = None
+_application = None
 
-    async def initialize(self):
-        self.application = ApplicationBuilder().token(TG_BOT_TOKEN).build()
+def build_application():
+    app = ApplicationBuilder().token(TG_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("tasks", tasks_command))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("unbind", unbind))
+    return app
 
-        self.application.add_handler(CommandHandler("start", start))
-        self.application.add_handler(CommandHandler("help", help_command))
-        self.application.add_handler(CommandHandler("tasks", tasks_command))
-        self.application.add_handler(CommandHandler("stats", stats_command))
-        self.application.add_handler(CommandHandler("unbind", unbind))
-
+async def start_polling():
+    global _application
+    try:
+        _application = build_application()
+        await _application.initialize()
+        await _application.updater.start_polling()
         try:
-            await self.application.initialize()
+            await _application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Telegram webhook deleted, polling started")
         except Exception as e:
-            logger.error(f"Failed to initialize Telegram application: {e}")
-            self.application = None
-            return
+            logger.warning(f"Could not delete webhook: {e}")
+        logger.info("Telegram bot polling started")
+    except Exception as e:
+        logger.error(f"Failed to start Telegram polling: {e}")
+        _application = None
 
+async def stop_polling():
+    global _application
+    if _application:
         try:
-            await self.application.bot.set_webhook(url=TG_WEBHOOK_URL)
-            logger.info(f"Telegram webhook set to {TG_WEBHOOK_URL}")
+            await _application.updater.stop()
+            await _application.stop()
+            await _application.shutdown()
+            logger.info("Telegram bot polling stopped")
         except Exception as e:
-            logger.error(f"Failed to set Telegram webhook: {e}")
-
-    async def process_update(self, request: Request):
-        if not self.application:
-            await self.initialize()
-
-        try:
-            update_data = await request.json()
-            update = Update.de_json(update_data, self.application.bot)
-            await self.application.process_update(update)
-            return {"status": "ok"}
-        except Exception as e:
-            logger.error(f"Error processing Telegram update: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-webhook_handler = TelegramWebhookHandler()
+            logger.error(f"Error stopping Telegram polling: {e}")
+        _application = None
 
 @router.post("/webhook")
 async def telegram_webhook(request: Request):
-    return await webhook_handler.process_update(request)
+    if not _application:
+        return {"status": "not_initialized"}
+    try:
+        update_data = await request.json()
+        update = Update.de_json(update_data, _application.bot)
+        await _application.process_update(update)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error processing Telegram update: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/setup-webhook")
 async def setup_webhook():
-    if not webhook_handler.application:
-        await webhook_handler.initialize()
-    try:
-        await webhook_handler.application.bot.set_webhook(url=TG_WEBHOOK_URL)
-        return {"status": "ok", "webhook_url": TG_WEBHOOK_URL}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "polling_mode", "detail": "Bot is running in polling mode. Use delete-webhook to clear Telegram webhook."}
