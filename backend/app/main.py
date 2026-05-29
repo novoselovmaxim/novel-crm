@@ -8,7 +8,7 @@ from .database import get_db
 from .models import create_tables
 from .routers import auth, companies, dashboard, telegram, import_routes, availability
 from .notifications import notifier
-from .telegram_webhook import router as telegram_webhook_router, webhook_handler
+from .telegram_webhook import router as telegram_webhook_router, start_polling, stop_polling
 from .scheduler import create_scheduler
 
 app = FastAPI(title="Novel CRM", version="0.1.0")
@@ -40,9 +40,9 @@ async def startup():
     await create_tables()
     await notifier.initialize()
     try:
-        await webhook_handler.initialize()
+        await start_polling()
     except Exception as e:
-        print(f"Telegram bot init failed (non-fatal): {e}")
+        print(f"Telegram polling init failed (non-fatal): {e}")
     scheduler = create_scheduler()
     scheduler.start()
     print("Scheduler started")
@@ -50,6 +50,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     global scheduler
+    await stop_polling()
     if scheduler:
         scheduler.shutdown(wait=False)
 
