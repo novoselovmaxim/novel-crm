@@ -160,6 +160,10 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   }, [company.assigned_to])
 
   useEffect(() => {
+    setSelectedStatus(company.call_status)
+  }, [company.call_status])
+
+  useEffect(() => {
     if (isAdminOrLead) {
       api.get('/auth/managers').then(({ data }) => setManagers(data))
     }
@@ -180,6 +184,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [commentText, setCommentText] = useState('')
   const [sendingComment, setSendingComment] = useState(false)
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     api.get(`/import/data`, { params: { company_id: company.id } }).then(({ data }) => {
@@ -196,11 +201,11 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
 
   useEffect(() => {
     api.get(`/companies/${company.id}/comments`).then(({ data }) => setComments(data)).catch(() => setComments([]))
-  }, [company.id])
+  }, [company.id, refreshKey])
 
   useEffect(() => {
     api.get(`/companies/${company.id}/calls`).then(({ data }) => setCallLogs(data)).catch(() => setCallLogs([]))
-  }, [company.id])
+  }, [company.id, refreshKey])
 
   const sendComment = async () => {
     if (!commentText.trim() || sendingComment) return
@@ -247,7 +252,13 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
         setComments(prev => [...prev, data])
       }
       setNotes('')
-      window.location.reload()
+      setCompany(prev => ({
+        ...prev,
+        call_status: status || selectedStatus,
+        call_count: (prev.call_count || 0) + 1,
+      }))
+      setRefreshKey(k => k + 1)
+      setSaving(false)
     } catch {
       setSaving(false)
     }
@@ -379,7 +390,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                 onClick={() => setSelectedStatus(s.value)}
                 disabled={saving}
                 className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
-                  (saving ? selectedStatus : company.call_status) === s.value ? `${s.color} text-white` : 'bg-bg text-muted hover:text-text'
+                  selectedStatus === s.value ? `${s.color} text-white` : 'bg-bg text-muted hover:text-text'
                 }`}
               >
                 {s.label}
