@@ -364,6 +364,9 @@ export default function CompanyTable() {
         const { data } = await api.get('/companies', { params })
         setCompanies(data.items)
         setTotal(data.total)
+      } catch {
+        setCompanies([])
+        setTotal(0)
       } finally {
         setLoading(false)
       }

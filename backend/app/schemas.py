@@ -22,6 +22,8 @@ class UserResponse(BaseModel):
     role: UserRole
     is_active: bool
     created_at: datetime
+    tg_chat_id: Optional[int] = None
+    tg_username: Optional[str] = None
     
     class Config:
         from_attributes = True

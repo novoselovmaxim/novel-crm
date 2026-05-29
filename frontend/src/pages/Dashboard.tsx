@@ -3,6 +3,7 @@ import { useAuth } from '../store/auth'
 import api from '../api/client'
 import CompanyTable from '../components/CompanyTable'
 import ImportModal from '../components/ImportModal'
+import ProfileModal from '../components/ProfileModal'
 
 interface Metrics {
   total_companies: number
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const logout = useAuth((s) => s.logout)
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
 
   useEffect(() => {
     api.get('/dashboard/me').then(({ data }) => setMetrics(data))
@@ -36,6 +38,7 @@ export default function Dashboard() {
           {user?.role === 'admin' && (
             <button onClick={() => setShowImport(true)} className="text-sm text-muted hover:text-text">Импорт</button>
           )}
+          <button onClick={() => setShowProfile(true)} className="text-sm text-muted hover:text-text">Настройки</button>
           <span className="text-sm text-muted">{user?.name || user?.email}</span>
           <button onClick={logout} className="text-sm text-muted hover:text-text">Выйти</button>
         </div>
@@ -57,6 +60,7 @@ export default function Dashboard() {
       </div>
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
     </div>
   )
 }

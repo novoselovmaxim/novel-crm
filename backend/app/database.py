@@ -1,12 +1,24 @@
+from urllib.parse import quote_plus
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    db_url: str = "postgresql+asyncpg://novel:novel_secret@localhost:5432/novel_crm"
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_user: str = "novel"
+    db_password: str = "novel_secret"
+    db_name: str = "novel_crm"
     jwt_secret: str = "change_me_in_production"
     jwt_algorithm: str = "HS256"
     jwt_access_expire_minutes: int = 15
     jwt_refresh_expire_days: int = 30
+
+    @property
+    def db_url(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.db_user}:{quote_plus(self.db_password)}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
 
     class Config:
         env_file = ".env"

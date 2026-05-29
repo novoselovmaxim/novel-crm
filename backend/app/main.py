@@ -9,8 +9,10 @@ from .models import create_tables
 from .routers import auth, companies, dashboard, telegram, import_routes, availability
 from .notifications import notifier
 from .telegram_webhook import router as telegram_webhook_router, webhook_handler
+from .scheduler import create_scheduler
 
 app = FastAPI(title="Novel CRM", version="0.1.0")
+scheduler = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,12 +36,22 @@ async def health():
 
 @app.on_event("startup")
 async def startup():
+    global scheduler
     await create_tables()
     await notifier.initialize()
     try:
         await webhook_handler.initialize()
     except Exception as e:
         print(f"Telegram bot init failed (non-fatal): {e}")
+    scheduler = create_scheduler()
+    scheduler.start()
+    print("Scheduler started")
+
+@app.on_event("shutdown")
+async def shutdown():
+    global scheduler
+    if scheduler:
+        scheduler.shutdown(wait=False)
 
 static_dir = Path("/app/static")
 if static_dir.exists():
