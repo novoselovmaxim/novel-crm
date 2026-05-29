@@ -4,6 +4,7 @@ import { Company, User, Comment, CallLog } from '../types'
 import { useAuth } from '../store/auth'
 import CalendarPicker from './CalendarPicker'
 import CalendarModal from './CalendarModal'
+import { getClientTimeInfo } from '../utils/timezone'
 
 const STATUSES = [
   { value: 'new', label: 'Новый', color: 'bg-gray-500' },
@@ -117,6 +118,17 @@ function formatMoney(val: number | null | undefined) {
   if (val >= 1e6) return `${(val / 1e6).toFixed(0)} млн`
   if (val >= 1e3) return `${(val / 1e3).toFixed(0)} тыс`
   return val.toLocaleString('ru-RU')
+}
+
+function TimeZoneBlock({ region }: { region: string }) {
+  const info = getClientTimeInfo(region)
+  const colors = { working: 'text-success', border: 'text-yellow-400', off: 'text-error' }
+  const labels = { working: 'рабочее', border: 'граничное', off: 'нерабочее' }
+  return (
+    <div className="text-xs text-muted mb-2">
+      UTC{info.utcOffset >= 0 ? '+' : ''}{info.utcOffset} · {info.currentTime} <span className={colors[info.period]}>({labels[info.period]})</span>
+    </div>
+  )
 }
 
 function formatNumericString(val: string | null | undefined) {
@@ -304,6 +316,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           {company.kpp && <span>КПП {company.kpp}</span>}
         </div>
         {company.region && <p className="text-sm text-muted mb-1">{company.region}</p>}
+        {company.region && <TimeZoneBlock region={company.region} />}
         {company.activity_main && <p className="text-sm text-muted mb-2 line-clamp-2">{company.activity_main}</p>}
 
         {phones.length > 0 && (
@@ -363,7 +376,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
             {STATUSES.map((s) => (
               <button
                 key={s.value}
-                onClick={() => { setSelectedStatus(s.value); handleSaveCall(s.value) }}
+                onClick={() => setSelectedStatus(s.value)}
                 disabled={saving}
                 className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
                   (saving ? selectedStatus : company.call_status) === s.value ? `${s.color} text-white` : 'bg-bg text-muted hover:text-text'
@@ -513,17 +526,15 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
         </Section>
 
         {/* Director */}
-        {(company.director || company.director_title || company.contact_person || company.fin_director || company.lpr_phone || company.contact_person_full) && (
           <Section title="Руководство / ЛПР">
-            {company.director && <Field label="Руководитель" value={company.director} field="director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
-            {company.director_title && <Field label="Должность" value={company.director_title} field="director_title" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
-            {company.contact_person && <Field label="Контактное лицо" value={company.contact_person} field="contact_person" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
-            {company.contact_person_full && <Field label="Контакты компании" value={company.contact_person_full} field="contact_person_full" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
-            {company.fin_director && <Field label="Фин. директор" value={company.fin_director} field="fin_director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
-            {company.director_inn && <Field label="ИНН директора" value={company.director_inn} field="director_inn" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
-            {company.lpr_phone && <Field label="Номер ЛПР" value={company.lpr_phone} field="lpr_phone" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />}
+            <Field label="Руководитель" value={company.director} field="director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Должность" value={company.director_title} field="director_title" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Контактное лицо" value={company.contact_person} field="contact_person" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Контакты компании" value={company.contact_person_full} field="contact_person_full" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Фин. директор" value={company.fin_director} field="fin_director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="ИНН директора" value={company.director_inn} field="director_inn" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Номер ЛПР" value={company.lpr_phone} field="lpr_phone" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
           </Section>
-        )}
 
         {/* Activity */}
         <Section title="Профиль деятельности">

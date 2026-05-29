@@ -1,8 +1,14 @@
 import os
 import logging
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Request, HTTPException
+from sqlalchemy import select, func
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+from app.database import async_session
+from app.models import User, Company, CallLog, TgToken
+from app.notifications import notifier
 
 logger = logging.getLogger(__name__)
 
@@ -12,36 +18,145 @@ TG_WEBHOOK_URL = os.getenv("TG_WEBHOOK_URL", "https://novel.maxnov.ru/api/telegr
 router = APIRouter(prefix="/api/telegram", tags=["telegram-webhook"])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    token = args[0] if args else None
+
+    if token:
+        async with async_session() as db:
+            result = await db.execute(
+                select(TgToken).where(
+                    TgToken.token == token,
+                    TgToken.used == False,
+                    TgToken.expires_at > datetime.now(timezone.utc)
+                )
+            )
+            tg_token = result.scalar_one_or_none()
+            if tg_token:
+                result = await db.execute(select(User).where(User.id == tg_token.user_id))
+                user = result.scalar_one_or_none()
+                if user:
+                    tg_token.used = True
+                    user.tg_chat_id = update.effective_chat.id
+                    user.tg_username = update.effective_user.username
+                    await db.commit()
+                    await update.message.reply_text(
+                        f"Аккаунт привязан!\n"
+                        f"Пользователь: {user.name or user.email}\n\n"
+                        f"Теперь вы будете получать уведомления из CRM."
+                    )
+                    await notifier.send_message(
+                        update.effective_chat.id,
+                        f"Добро пожаловать в Novel CRM, {user.name or user.email}!"
+                    )
+                    return
+
     await update.message.reply_text(
-        "👋 <b>Novel CRM Bot</b>\n\n"
-        "Этот бот привязан к CRM системе Novel.\n\n"
-        "Для привязки аккаунта:\n"
-        "1. Откройте настройки в CRM\n"
-        "2. Нажмите 'Привязать Telegram'\n"
-        "3. Подтвердите привязку\n\n"
-        "После привязки вы будете получать уведомления о:\n"
-        "• Новых задачах\n"
-        "• Изменениях статусов\n"
-        "• Напоминаниях о звонках"
+        "Novel CRM Bot\n\n"
+        "Команды:\n"
+        "/tasks - Мои задачи на сегодня\n"
+        "/stats - Статистика звонков\n"
+        "/unbind - Отвязать аккаунт\n"
+        "/help - Справка"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📖 <b>Доступные команды:</b>\n\n"
+        "Доступные команды:\n\n"
         "/start - Запустить бота\n"
-        "/help - Показать справку\n"
-        "/status - Статус привязки\n"
-        "/unbind - Отвязать аккаунт"
+        "/tasks - Мои задачи на сегодня\n"
+        "/stats - Статистика звонков\n"
+        "/unbind - Отвязать аккаунт\n"
+        "/help - Показать справку"
     )
 
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unbind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    await update.message.reply_text(
-        f"📊 <b>Статус:</b>\n\n"
-        f"Chat ID: {chat_id}\n"
-        f"Статус: Ожидает привязки к CRM\n\n"
-        f"Для привязки откройте настройки в CRM."
-    )
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
+        user = result.scalar_one_or_none()
+        if user:
+            user.tg_chat_id = None
+            user.tg_username = None
+            await db.commit()
+            await update.message.reply_text("Аккаунт отвязан от Telegram.")
+        else:
+            await update.message.reply_text("Аккаунт не найден. Возможно, он уже отвязан.")
+
+async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            await update.message.reply_text("Аккаунт не привязан. Используйте /start с токеном из настроек CRM.")
+            return
+
+        today = date.today()
+        stmt = select(Company).where(
+            Company.assigned_to == user.id,
+            Company.next_call_date == today,
+            Company.is_deleted == False,
+            Company.call_status != "refused"
+        ).order_by(Company.call_status, Company.name)
+        result = await db.execute(stmt)
+        companies = result.scalars().all()
+
+        if not companies:
+            await update.message.reply_text("На сегодня задач нет.")
+            return
+
+        lines = [f"Задач на сегодня: {len(companies)}"]
+        for c in companies:
+            status_icon = {
+                "new": "new", "callback": "callback", "in_progress": "in_progress",
+                "interested": "interested", "meeting": "meeting"
+            }.get(c.call_status, c.call_status)
+            lines.append(f"{c.name} (ИНН {c.inn})")
+        await update.message.reply_text("\n".join(lines))
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            await update.message.reply_text("Аккаунт не привязан.")
+            return
+
+        today = date.today()
+        total = await db.execute(
+            select(func.count(CallLog.id)).where(
+                CallLog.user_id == user.id,
+                func.date(CallLog.called_at) == today
+            )
+        )
+        calls_today = total.scalar() or 0
+
+        assigned = await db.execute(
+            select(func.count(Company.id)).where(
+                Company.assigned_to == user.id,
+                Company.is_deleted == False,
+                Company.call_status != "refused"
+            )
+        )
+        total_assigned = assigned.scalar() or 0
+
+        next_calls = await db.execute(
+            select(func.count(Company.id)).where(
+                Company.assigned_to == user.id,
+                Company.next_call_date == today,
+                Company.is_deleted == False,
+                Company.call_status != "refused"
+            )
+        )
+        tasks_today = next_calls.scalar() or 0
+
+        await update.message.reply_text(
+            f"Статистика:\n\n"
+            f"Звонков сегодня: {calls_today}\n"
+            f"Задач на сегодня: {tasks_today}\n"
+            f"Всего в работе: {total_assigned}"
+        )
 
 class TelegramWebhookHandler:
     def __init__(self):
@@ -49,18 +164,20 @@ class TelegramWebhookHandler:
 
     async def initialize(self):
         self.application = ApplicationBuilder().token(TG_BOT_TOKEN).build()
-        
+
         self.application.add_handler(CommandHandler("start", start))
         self.application.add_handler(CommandHandler("help", help_command))
-        self.application.add_handler(CommandHandler("status", status_command))
-        
+        self.application.add_handler(CommandHandler("tasks", tasks_command))
+        self.application.add_handler(CommandHandler("stats", stats_command))
+        self.application.add_handler(CommandHandler("unbind", unbind))
+
         try:
             await self.application.initialize()
         except Exception as e:
             logger.error(f"Failed to initialize Telegram application: {e}")
             self.application = None
             return
-        
+
         try:
             await self.application.bot.set_webhook(url=TG_WEBHOOK_URL)
             logger.info(f"Telegram webhook set to {TG_WEBHOOK_URL}")
@@ -70,7 +187,7 @@ class TelegramWebhookHandler:
     async def process_update(self, request: Request):
         if not self.application:
             await self.initialize()
-        
+
         try:
             update_data = await request.json()
             update = Update.de_json(update_data, self.application.bot)

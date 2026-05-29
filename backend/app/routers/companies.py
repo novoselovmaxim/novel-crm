@@ -11,6 +11,7 @@ from ..database import get_db
 from ..models import User, Company, CallLog, AuditLog, ImportSourceData, CompanyComment, Meeting
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
+from ..notifications import notifier
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -264,6 +265,17 @@ async def log_call(
     db.add(call_log)
     await db.commit()
     await db.refresh(call_log)
+
+    if request.call_status == "meeting":
+        admins = await db.execute(
+            select(User).where(User.role.in_(["admin", "lead"]), User.tg_chat_id != None)
+        )
+        for admin in admins.scalars().all():
+            await notifier.send_message(
+                admin.tg_chat_id,
+                f"Назначена встреча с {company.name} (ИНН {company.inn})"
+            )
+
     return call_log
 
 @router.delete("/{company_id}/calls/{call_id}")
@@ -438,6 +450,16 @@ async def assign_company(
     company.assigned_to = request.user_id
     await db.commit()
     await db.refresh(company)
+
+    if request.user_id:
+        assignee = await db.execute(select(User).where(User.id == request.user_id))
+        assignee = assignee.scalar_one_or_none()
+        if assignee:
+            await notifier.notify_user_by_email(
+                assignee.email,
+                f"Вам назначена компания {company.name} (ИНН {company.inn})"
+            )
+
     return company
 
 @router.patch("/{company_id}/status", response_model=CompanyResponse)
@@ -455,6 +477,17 @@ async def update_company_status(
     company.call_status = request.call_status
     await db.commit()
     await db.refresh(company)
+
+    if request.call_status == "meeting":
+        admins = await db.execute(
+            select(User).where(User.role.in_(["admin", "lead"]), User.tg_chat_id != None)
+        )
+        for admin in admins.scalars().all():
+            await notifier.send_message(
+                admin.tg_chat_id,
+                f"Назначена встреча с {company.name} (ИНН {company.inn})"
+            )
+
     return company
 
 @router.delete("/{company_id}")
