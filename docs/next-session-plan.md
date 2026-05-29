@@ -1,6 +1,6 @@
 # Novel CRM — Next Session Plan
 
-> Created: 2026-05-26
+> Updated: 2026-05-29
 > Goal: Telegram bot, bulk actions, client timezone
 
 ## Current State
@@ -14,10 +14,14 @@
 - **Dashboard**: Basic metrics cards (tasks today, overdue, calls today, unprocessed, archived, total)
 - **Calendar/Meetings**: Availability slots per user (admin/lead set schedule), week calendar grid, booking meetings, meeting notes, cancel meeting, `CalendarModal`, `CalendarPicker`
 - **Statuses**: 8 statuses (new, not_reached, no_answer, callback, in_progress, interested, meeting, refused) with colored badges
+- **Bulk actions**: Checkbox selection, bulk status change, CSV export ✅
+- **Telegram bot**: TgToken model, `/auth/tg-link`, `/auth/tg-bind`, `/auth/tg-unbind`, webhook handlers (`/tasks`, `/stats`, `/unbind`, token-based `/start`), `ProfileModal` with bind/unbind UI, `TG_BOT_USERNAME` env var ✅
+- **Scheduler**: APScheduler, morning brief (9:00 MSK), evening summary (18:00 MSK), meeting reminders (every 15 min), stale check (3-day interested), trigger notifications on assign & meeting status ✅
+- **Company card fixes**: Status buttons no longer auto-save calls, all LPR fields always visible for editing ✅
+- **Client timezone**: Region→UTC mapping, display in CompanyCard with working/border/off indicator ✅
 - **Deploy**: Docker Compose, FastAPI serves static frontend, nginx on host, SSL via Let's Encrypt, port 3020
 
 ### Partially implemented 🔶
-- **Telegram bot**: `telegram_webhook.py` (webhook handler, /start, /help, /status, /unbind commands), `notifications.py` (TelegramNotifier with send_message, notify_user_by_email), `POST /api/telegram/bind`, `POST /api/telegram/notify`, `GET /api/telegram/status/{email}`. Missing: TgToken model, /auth/tg-link endpoint, scheduler, proper bind flow, frontend profile, trigger notifications
 - **Dashboard**: Only basic `/dashboard/me` metrics. No funnel, team dashboard, stale contacts, quick presets
 
 ### Not implemented ❌
@@ -28,162 +32,35 @@
 
 ---
 
-## Step 1: Telegram Bot — Model & Bind Flow
+## ✅ Completed
 
-### 1.1 Add `TgToken` model
+### Bugfixes
+- **Status buttons no longer auto-save calls**: clicking a status only sets `selectedStatus`; call is logged only on "Сохранить звонок"
+- **All LPR fields always visible**: removed conditional rendering of "Руководство / ЛПР" section and individual fields; now all fields show (with `—` for empty), clickable for inline editing
 
-File: `backend/app/models.py`
+### Step 1: Telegram Bot — Model & Bind Flow ✅
+- `TgToken` model in `backend/app/models.py`
+- `POST /api/auth/tg-link` (generates token, returns `t.me/bot?start={token}`)
+- `POST /api/auth/tg-bind` (validates token, binds user, sends welcome)
+- `POST /api/auth/tg-unbind` (clears tg data)
+- Webhook handlers: `/tasks` (DB query), `/stats` (call stats), `/unbind`, `/start` with token arg
+- `ProfileModal.tsx` — settings button in header, bind/unbind Telegram
+- `TG_BOT_USERNAME` env var (default: `novelsales_bot`)
 
-Add model `TgToken`:
-- `id` UUID PK
-- `user_id` UUID FK users
-- `token` TEXT UNIQUE
-- `created_at` TIMESTAMPTZ
-- `expires_at` TIMESTAMPTZ
-- `used` BOOLEAN DEFAULT false
+### Step 2: Scheduler for Briefs & Reminders ✅
+- APScheduler in `backend/app/scheduler.py`, started on FastAPI startup
+- Morning brief (6:00 UTC = 9:00 MSK): tasks today, yesterday's calls per manager + team summary
+- Evening summary (15:00 UTC = 18:00 MSK): calls today with status breakdown per manager + team
+- Meeting reminders (every 15 min): at meeting hour and hour+1
+- Stale check (5:00 UTC): companies `interested` + 3d+ no activity → notify manager
+- Trigger notifications: on assign (to manager) and on status → "meeting" (to admin/lead)
 
-### 1.2 Add `/auth/tg-link` endpoint
+### Step 3: Bulk Actions ✅ (was already done)
+- Checkbox column, selection toolbar, bulk status change, CSV export
 
-File: `backend/app/routers/auth.py`
-
-New endpoint `POST /api/auth/tg-link` (auth required):
-- Generates `TgToken` with 15 min expiry
-- Returns token + bot username
-- URL format: `https://t.me/novelsales_bot?start={token}`
-
-### 1.3 Add `/auth/tg-bind` endpoint
-
-File: `backend/app/routers/auth.py`
-
-New endpoint `POST /api/auth/tg-bind` (no auth — called by bot):
-- Receives `{ token, chat_id, username }`
-- Validates token (exists, not expired, not used)
-- Marks token as used
-- Sets `tg_chat_id` and `tg_username` on User
-- Sends welcome message via `notifier`
-
-### 1.4 Update bot webhook handlers
-
-File: `backend/app/telegram_webhook.py`
-
-- Update `/start` to handle `?start={token}` — call `/api/auth/tg-bind`
-- Add `/unbind` — clear `tg_chat_id` on User
-- Add `/tasks` — query today's tasks from DB
-- Add `/stats` — query call stats from DB
-
-### 1.5 Frontend: Profile button
-
-New file: `frontend/src/components/ProfileModal.tsx`
-
-Or add to header in `Dashboard.tsx`:
-- "Настройки" button in header (visible for all users)
-- Shows Telegram bind status
-- "Привязать Telegram" button → fetches `/api/auth/tg-link` → opens `t.me/novelsales_bot?start={token}`
-- "Отвязать" button → calls `/api/auth/tg-unbind`
-
----
-
-## Step 2: Scheduler for Briefs & Reminders
-
-### 2.1 Add APScheduler
-
-New file: `backend/app/scheduler.py`
-
-- Initialize `AsyncIOScheduler` on FastAPI startup
-- Store reference in app state
-
-### 2.2 Morning brief (9:00 MSK)
-
-Function `morning_brief()`:
-- For each manager: query companies where `next_call_date = today` and `assigned_to = user.id` → send tasks list
-- For each manager: query `call_count` where `called_at = yesterday` → send stats
-- For admin+lead: aggregate all managers' stats → send team summary
-
-### 2.3 Evening summary (18:00 MSK)
-
-Function `evening_summary()`:
-- For each manager: count calls made today, status breakdown → send
-- For admin+lead: team aggregate
-
-### 2.4 Meeting reminders
-
-Cron every 15 minutes:
-- Query meetings where `date = today` and `hour = now+1` → send 60-min reminder to manager + lead
-- Query meetings where `date = today` and `hour = now+0.25` → send 15-min reminder to manager
-
-### 2.5 Trigger notifications
-
-Hooks in `backend/app/routers/companies.py`:
-- On assign: notify manager `notifier.notify_user_by_email(assignee_email, text)`
-- On status change to "meeting": notify admin+lead
-- On status change to "interested": schedule stale check
-
-Stale check (daily in scheduler):
-- Companies with `call_status = 'interested'` and `updated_at < now() - 3 days` → notify assigned manager
-
----
-
-## Step 3: Bulk Actions (Checkboxes, Status, CSV)
-
-### 3.1 Backend
-
-File: `backend/app/routers/companies.py`
-
-- `POST /api/companies/bulk-status` — body `{ company_ids: [...], status: string }` → update all
-- `POST /api/companies/export` — body `{ company_ids: [...] }` → return CSV file with all company fields
-
-### 3.2 Frontend
-
-File: `frontend/src/components/CompanyTable.tsx`
-
-- Add checkbox column (first column)
-- Track `selectedIds: Set<string>` state
-- Show selection toolbar when `selectedIds.size > 0`
-  - "Изменить статус" dropdown → PATCH bulk-status
-  - "Экспорт CSV" button → POST export → download file
-- Toggle all checkbox in header
-
----
-
-## Step 4: Client Timezone in Company Card
-
-### 4.1 Region → UTC mapping
-
-New file: `frontend/src/utils/timezone.ts`
-
-Map of Russian regions to UTC offsets:
-```typescript
-const REGION_TZ: Record<string, number> = {
-  'Калининград': 2,
-  'Москва': 3,
-  'Санкт-Петербург': 3,
-  'Самара': 4,
-  'Екатеринбург': 5,
-  'Омск': 6,
-  'Красноярск': 7,
-  'Иркутск': 8,
-  'Владивосток': 10,
-  // ...etc
-}
-```
-
-### 4.2 Display in CompanyCard
-
-File: `frontend/src/components/CompanyCard.tsx`
-
-Add timezone block in the upper zone:
-```
-🕐 Регион: Калининград (UTC+2)
-Текущее время клиента: 14:30 🟢
-```
-
-Use `Intl.DateTimeFormat` with the detected UTC offset to show current time.
-Color indicator:
-- 🟢 9:00–18:00 = рабочее
-- 🟡 8:00–9:00, 18:00–20:00 = граничное
-- 🔴 20:00–8:00 = нерабочее
-
-Also show admin's current time for comparison.
+### Step 4: Client Timezone ✅
+- `frontend/src/utils/timezone.ts` — 40+ Russian regions mapped to UTC offsets
+- `TimeZoneBlock` component in `CompanyCard.tsx` — shows `UTC+X · HH:MM (working/border/off)` with color indicator
 
 ---
 
@@ -204,18 +81,17 @@ docker compose up -d
 
 ## Files Changed
 
-| File | Step |
+| File | What |
 |------|------|
-| `backend/app/models.py` | 1.1 |
-| `backend/app/routers/auth.py` | 1.2, 1.3 |
-| `backend/app/telegram_webhook.py` | 1.4 |
-| `backend/app/scheduler.py` | 2.1 (new) |
-| `backend/app/notifications.py` | 2.2-2.5 |
-| `backend/app/main.py` | 2.1 |
-| `backend/app/routers/companies.py` | 2.5, 3.1 |
-| `frontend/src/components/ProfileModal.tsx` | 1.5 (new) |
-| `frontend/src/pages/Dashboard.tsx` | 1.5 |
-| `frontend/src/components/CompanyTable.tsx` | 3.2 |
-| `frontend/src/components/CompanyCard.tsx` | 4.2 |
-| `frontend/src/utils/timezone.ts` | 4.1 (new) |
-| `frontend/src/api/client.ts` | 3.2 |
+| `backend/app/models.py` | +TgToken model |
+| `backend/app/routers/auth.py` | +tg-link, tg-bind, tg-unbind |
+| `backend/app/telegram_webhook.py` | +/tasks, /stats, /unbind, token /start |
+| `backend/app/scheduler.py` | New: APScheduler, briefs, reminders, stale check |
+| `backend/app/main.py` | +scheduler init on startup |
+| `backend/app/routers/companies.py` | +notifications on assign & meeting status |
+| `backend/app/schemas.py` | +tg fields in UserResponse |
+| `backend/requirements.txt` | +apscheduler |
+| `frontend/src/components/ProfileModal.tsx` | New: Telegram bind/unbind UI |
+| `frontend/src/pages/Dashboard.tsx` | +"Настройки" button |
+| `frontend/src/components/CompanyCard.tsx` | Fix: status buttons, LPR fields; +TimeZoneBlock |
+| `frontend/src/utils/timezone.ts` | New: region to UTC mapping |
