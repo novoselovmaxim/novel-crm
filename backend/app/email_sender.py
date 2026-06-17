@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> None:
     """Send CP HTML as email body via SMTP."""
     msg = MIMEMultipart("alternative")
-    msg["From"] = f"{Header('ИНТПЭЙ', 'utf-8')} <info@intpaypro.ru>"
+    msg["From"] = Header("ИНТПЭЙ", "utf-8").encode() + " <info@intpaypro.ru>"
     msg["To"] = recipient_email
     msg["Subject"] = "КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ"
     msg["X-Mailer"] = "Novel CRM"
