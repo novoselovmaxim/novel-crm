@@ -158,7 +158,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     style.paragraph_format.space_after = Pt(5)
     style.paragraph_format.line_spacing = 1.1
     
-    W = 10706  # total width in dxa
     
     # === HEADER ===
     header_table = doc.add_table(rows=1, cols=2)
