@@ -13,6 +13,10 @@ from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyList
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 from ..notifications import notifier
 from ..cp_generator import generate_cp, generate_cp_html
+from urllib.parse import quote
+import logging
+
+logger = logging.getLogger(__name__)
 from ..email_sender import send_cp_email
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
@@ -578,18 +582,24 @@ async def generate_company_cp(
         raise HTTPException(status_code=400, detail="Заполните поле «Номер ЛПР»")
 
     lpr_firstname = company.director.split()[0] if company.director.split() else ""
-    buf = generate_cp(
-        company_name=company.name or "",
-        lpr_name=company.director,
-        lpr_phone=company.lpr_phone,
-        lpr_firstname=lpr_firstname,
-    )
+    try:
+        buf = generate_cp(
+            company_name=company.name or "",
+            lpr_name=company.director,
+            lpr_phone=company.lpr_phone,
+            lpr_firstname=lpr_firstname,
+        )
+    except Exception:
+        logger.exception(f"CP generation failed for company {company_id}")
+        raise HTTPException(status_code=500, detail="Ошибка генерации КП")
 
-    safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in (company.name or "proposal"))
+    safe_ascii = "".join(c if c.isascii() and (c.isalnum() or c in " _-.") else "_" for c in (company.name or "proposal"))
+    filename = f"CP_{safe_ascii}.docx"
+    filename_utf8 = f"CP_{company.name}.docx" if company.name else "CP_proposal.docx"
     return Response(
         content=buf.read(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="CP_{safe_name}.docx"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{quote(filename_utf8)}'},
     )
 
 
@@ -612,12 +622,16 @@ async def send_company_cp(
         raise HTTPException(status_code=400, detail="Заполните поле «Email ЛПР»")
 
     lpr_firstname = company.director.split()[0] if company.director.split() else ""
-    html = generate_cp_html(
-        company_name=company.name or "",
-        lpr_name=company.director,
-        lpr_phone=company.lpr_phone,
-        lpr_firstname=lpr_firstname,
-    )
+    try:
+        html = generate_cp_html(
+            company_name=company.name or "",
+            lpr_name=company.director,
+            lpr_phone=company.lpr_phone,
+            lpr_firstname=lpr_firstname,
+        )
+    except Exception:
+        logger.exception(f"CP HTML generation failed for company {company_id}")
+        raise HTTPException(status_code=500, detail="Ошибка генерации КП")
 
     try:
         send_cp_email(
@@ -625,7 +639,8 @@ async def send_company_cp(
             html_body=html,
             company_name=company.name or "",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка отправки email: {e}")
+    except Exception:
+        logger.exception(f"CP email send failed for company {company_id}")
+        raise HTTPException(status_code=500, detail="Ошибка отправки email")
 
     return {"message": f"КП отправлено на {company.lpr_email}"}
