@@ -98,7 +98,7 @@ def _add_paragraph(doc_or_cell, text_runs=None, alignment=None, spacing_after=60
     pPr_spacing.set(qn('w:line'), str(line))
     
     if alignment:
-        pPr.alignment = alignment
+        p.alignment = alignment
     
     if indent_left:
         pPr_ind = pPr.find(qn('w:ind'))
@@ -187,11 +187,6 @@ def _add_orange_line(pPr):
     pPr.append(pBdr)
 
 
-def _clear_cell(cell):
-    for p in list(cell.paragraphs):
-        p._p.getparent().remove(p._p)
-
-
 def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     doc = Document()
 
@@ -205,7 +200,8 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     section.right_margin = Cm(1.06)
 
     # === TOP ORANGE LINE ===
-    line_p = doc.add_paragraph()
+    # python-docx 1.1.2 creates Document() with 1 paragraph; 1.2.0 with 0
+    line_p = doc.paragraphs[0] if doc.paragraphs else doc.add_paragraph()
     pPr = _set_paragraph_spacing(line_p, after=0, before=0, line=240)
     _add_orange_line(pPr)
 
@@ -225,7 +221,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     nested.columns[1].width = Cm(5.0)
 
     img_cell = nested.cell(0, 0)
-    _clear_cell(img_cell)
     _make_cell(img_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
     logo_int_path = os.path.join(MEDIA_DIR, "intpay_logo.jpg")
@@ -233,7 +228,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         _add_image_to_cell_left(img_cell, logo_int_path, 685800, 685800)
 
     txt_cell = nested.cell(0, 1)
-    _clear_cell(txt_cell)
     _make_cell(txt_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
     _add_paragraph(txt_cell, [{'text': 'ИНТПЭЙ', 'size': 32, 'color': O, 'bold': True}],
@@ -269,10 +263,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     content_cell = content_table.cell(0, 0)
     _make_cell(content_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 1134, 'right': 1134, 'top': 20, 'bottom': 20})
-
-    # Remove the default empty paragraph that comes with a new cell
-    for p in content_cell.paragraphs:
-        p._p.getparent().remove(p._p)
 
     # P0: Company info
     ci = _add_paragraph(content_cell, alignment=WD_ALIGN_PARAGRAPH.RIGHT, spacing_after=40, line=248)
@@ -349,7 +339,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         row_idx = i // 2
         col_idx = (i % 2) * 2
         cell = adv_table.cell(row_idx, col_idx)
-        _clear_cell(cell)
         _make_cell(cell, borders={'top': be, 'bottom': be, 'left': bl, 'right': be},
                    margins={'top': 20, 'bottom': 20, 'left': 80, 'right': 80})
         _add_paragraph(cell, [{'text': title, 'size': 22, 'color': O, 'bold': True}], spacing_after=40, line=248)
@@ -382,7 +371,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
 
     for i, (num, title, desc) in enumerate(steps_data):
         cell = steps_table.cell(0, i * 2)
-        _clear_cell(cell)
         _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
 
         _add_paragraph(cell, [{'text': num, 'size': 20, 'color': O, 'bold': True}],
@@ -441,7 +429,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     ]
     for ci, (bpath, w_emu, h_emu) in enumerate(bank_logo_specs):
         cell = banks_table.cell(0, ci)
-        _clear_cell(cell)
         _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
         if os.path.exists(bpath):
             _add_image_to_cell(cell, bpath, w_emu, h_emu)
@@ -463,7 +450,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     footer_table.columns[0].width = Cm(18.88)
 
     footer_cell = footer_table.cell(0, 0)
-    _clear_cell(footer_cell)
     _make_cell(footer_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 200, 'right': 200, 'top': 25, 'bottom': 25})
 
@@ -482,16 +468,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         tg_run2 = contact_p.add_run()
         tg_run2.add_picture(tg_path, width=Emu(133350), height=Emu(171450))
         _add_hyperlink(contact_p, ' @in_veritate', 'https://t.me/in_veritate', 20, G)
-
-    # Clean up auto-generated empty paragraphs in content cell
-    for p in list(content_cell.paragraphs):
-        pPr = p._p.find(qn('w:pPr'))
-        if pPr is not None:
-            sp = pPr.find(qn('w:spacing'))
-            if sp is not None:
-                continue
-        if not p.text.strip():
-            p._p.getparent().remove(p._p)
 
     # Write to buffer
     buf = io.BytesIO()
