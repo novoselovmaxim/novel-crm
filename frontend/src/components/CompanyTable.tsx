@@ -19,6 +19,7 @@ const STATUS_DOT: Record<string, string> = {
   callback: 'bg-blue-500',
   in_progress: 'bg-yellow-500',
   interested: 'bg-green-500',
+  thinking: 'bg-teal-500',
   meeting: 'bg-purple-500',
   refused: 'bg-gray-600',
 }
@@ -31,6 +32,7 @@ const STATUSES = [
   { value: 'callback', label: 'Перезвонить' },
   { value: 'in_progress', label: 'В работе' },
   { value: 'interested', label: 'Заинтересован' },
+  { value: 'thinking', label: 'Думают' },
   { value: 'meeting', label: 'Встреча назначена' },
   { value: 'refused', label: 'Отказ' },
 ]
