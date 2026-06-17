@@ -317,8 +317,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
 
     # P8: НАШИ ПРЕИМУЩЕСТВА
     section_p = _add_paragraph(content_cell, [{'text': 'НАШИ ПРЕИМУЩЕСТВА', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
-    _add_bottom_border(section_p._p.get_or_add_pPr())
+                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
 
     # Advantages 2x2 table
     adv_items = [
@@ -348,8 +347,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
 
     # P11: СХЕМА РАБОТЫ
     section_p2 = _add_paragraph(content_cell, [{'text': 'СХЕМА РАБОТЫ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
-    _add_bottom_border(section_p2._p.get_or_add_pPr())
+                                                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
 
     # Steps table — three separate paragraphs per cell
     steps_data = [
@@ -380,8 +378,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
 
     # P14: ПОЧЕМУ НАМ ДОВЕРЯЮТ
     section_p3 = _add_paragraph(content_cell, [{'text': 'ПОЧЕМУ НАМ ДОВЕРЯЮТ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
-    _add_bottom_border(section_p3._p.get_or_add_pPr())
+                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
 
     # P15: Empty (after=2)
     _empty_paragraph(content_cell, after=2)
@@ -403,8 +400,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
 
     # P20: БАНКИ-ПАРТНЁРЫ
     section_p4 = _add_paragraph(content_cell, [{'text': 'БАНКИ-ПАРТНЁРЫ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
-    _add_bottom_border(section_p4._p.get_or_add_pPr())
+                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
 
     # Banks logos
     banks_table = content_cell.add_table(rows=1, cols=3)
