@@ -13,6 +13,7 @@ const STATUSES = [
   { value: 'callback', label: 'Перезвонить', color: 'bg-blue-500' },
   { value: 'in_progress', label: 'В работе', color: 'bg-yellow-500' },
   { value: 'interested', label: 'Заинтересован', color: 'bg-green-500' },
+  { value: 'thinking', label: 'Думают', color: 'bg-teal-500' },
   { value: 'meeting', label: 'Встреча назначена', color: 'bg-purple-500' },
   { value: 'refused', label: 'Отказ', color: 'bg-gray-600' },
 ]
