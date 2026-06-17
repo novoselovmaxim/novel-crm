@@ -51,14 +51,18 @@ export function getRegionUtcOffset(region: string | null | undefined): number {
 export function getClientTimeInfo(region: string | null | undefined): { utcOffset: number; currentTime: string; period: 'working' | 'border' | 'off' } {
   const offset = getRegionUtcOffset(region)
   const now = new Date()
+  const localMs = now.getTime() + offset * 3600000
+  const localDayOfWeek = new Date(localMs).getUTCDay()
+
   const utcHours = now.getUTCHours()
   const utcMinutes = now.getUTCMinutes()
   const localHours = (utcHours + offset) % 24
-  const localMinutes = utcMinutes
-  const timeStr = `${String(localHours).padStart(2, '0')}:${String(localMinutes).padStart(2, '0')}`
+  const timeStr = `${String(localHours).padStart(2, '0')}:${String(utcMinutes).padStart(2, '0')}`
 
   let period: 'working' | 'border' | 'off'
-  if (localHours >= 9 && localHours < 18) {
+  if (localDayOfWeek === 0 || localDayOfWeek === 6) {
+    period = 'off'
+  } else if (localHours >= 9 && localHours < 18) {
     period = 'working'
   } else if ((localHours >= 8 && localHours < 9) || (localHours >= 18 && localHours < 20)) {
     period = 'border'

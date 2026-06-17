@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 MSK = timezone(timedelta(hours=3))
 
 async def morning_brief():
-    today = date.today()
+    now_msk = datetime.now(timezone.utc).astimezone(MSK)
+    today = now_msk.date()
     yesterday = today - timedelta(days=1)
     async with async_session() as db:
         managers = await db.execute(select(User).where(User.tg_chat_id != None))
@@ -34,7 +35,7 @@ async def morning_brief():
             calls_yesterday = await db.execute(
                 select(func.count(CallLog.id)).where(
                     CallLog.user_id == user.id,
-                    func.date(CallLog.called_at) == yesterday
+                    func.date(func.timezone('+03', CallLog.called_at)) == yesterday
                 )
             )
             calls_count = calls_yesterday.scalar() or 0
@@ -61,7 +62,8 @@ async def morning_brief():
             )
 
 async def evening_summary():
-    today = date.today()
+    now_msk = datetime.now(timezone.utc).astimezone(MSK)
+    today = now_msk.date()
     async with async_session() as db:
         managers = await db.execute(select(User).where(User.tg_chat_id != None))
         managers = managers.scalars().all()
@@ -72,7 +74,7 @@ async def evening_summary():
             calls_today = await db.execute(
                 select(func.count(CallLog.id)).where(
                     CallLog.user_id == user.id,
-                    func.date(CallLog.called_at) == today
+                    func.date(func.timezone('+03', CallLog.called_at)) == today
                 )
             )
             calls_count = calls_today.scalar() or 0
@@ -80,7 +82,7 @@ async def evening_summary():
             statuses = await db.execute(
                 select(CallLog.call_status, func.count(CallLog.id)).where(
                     CallLog.user_id == user.id,
-                    func.date(CallLog.called_at) == today
+                    func.date(func.timezone('+03', CallLog.called_at)) == today
                 ).group_by(CallLog.call_status)
             )
             status_rows = statuses.all()
