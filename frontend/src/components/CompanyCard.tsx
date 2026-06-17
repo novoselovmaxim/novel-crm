@@ -17,7 +17,7 @@ const STATUSES = [
   { value: 'refused', label: 'Отказ', color: 'bg-gray-600' },
 ]
 
-function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: {
+function Field({ label, value, field, companyId, rawValue, onUpdate, onError, highlight }: {
   label: string
   value: string | null | undefined
   field?: string
@@ -25,6 +25,7 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
   rawValue?: string
   onUpdate?: (field: string, value: string) => void
   onError?: (msg: string) => void
+  highlight?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [editVal, setEditVal] = useState('')
@@ -78,8 +79,8 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
 
   if (editing) {
     return (
-      <div className="flex justify-between py-1.5 border-b border-muted/5 gap-4">
-        <span className="text-xs text-muted shrink-0 w-40">{label}</span>
+      <div className={`flex justify-between py-1.5 border-b border-muted/5 gap-4 ${highlight ? 'border-l-2 border-accent/40 pl-2' : ''}`}>
+        <span className={`text-xs shrink-0 w-40 ${highlight ? 'text-accent' : 'text-muted'}`}>{label}</span>
         <input
           autoFocus
           value={editVal}
@@ -93,8 +94,8 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError }: 
   }
 
   return (
-    <div className="flex justify-between py-1.5 border-b border-muted/5 gap-4 group" onClick={startEdit}>
-      <span className="text-xs text-muted shrink-0 w-40">{label}</span>
+    <div className={`flex justify-between py-1.5 border-b border-muted/5 gap-4 group ${highlight ? 'border-l-2 border-accent/40 pl-2' : ''}`} onClick={startEdit}>
+      <span className={`text-xs shrink-0 w-40 ${highlight ? 'text-accent' : 'text-muted'}`}>{label}</span>
       <span className={`text-sm text-right break-words ${canEdit ? 'cursor-pointer hover:text-accent group-hover:bg-bg/50 px-1 -mx-1 rounded transition-colors' : ''}`}>
         {displayValue}
         {canEdit && <span className="ml-1.5 text-[10px] text-muted/30 group-hover:text-muted/60">✎</span>}
@@ -223,6 +224,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
 
   const NUM_FIELDS = new Set(['revenue', 'profit', 'employees', 'capital', 'balance'])
   const [saveError, setSaveError] = useState('')
+  const [cpError, setCpError] = useState('')
 
   const handleFieldUpdate = (field: string, val: string) => {
     const parsed = NUM_FIELDS.has(field) ? (val ? parseInt(val.replace(/\s/g, ''), 10) : null) : val
@@ -538,14 +540,14 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
 
         {/* Director */}
           <Section title="Руководство / ЛПР">
-            <Field label="Руководитель" value={company.director} field="director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Руководитель" value={company.director} field="director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} highlight={true} />
             <Field label="Должность" value={company.director_title} field="director_title" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Контактное лицо" value={company.contact_person} field="contact_person" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Контакты компании" value={company.contact_person_full} field="contact_person_full" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Фин. директор" value={company.fin_director} field="fin_director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="ИНН директора" value={company.director_inn} field="director_inn" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
-            <Field label="Номер ЛПР" value={company.lpr_phone} field="lpr_phone" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
-            <Field label="Email ЛПР" value={company.lpr_email} field="lpr_email" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Номер ЛПР" value={company.lpr_phone} field="lpr_phone" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} highlight={true} />
+            <Field label="Email ЛПР" value={company.lpr_email} field="lpr_email" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} highlight={true} />
           </Section>
 
         {/* CP Actions */}
@@ -557,9 +559,10 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                 if (!company.director) missing.push('Руководитель')
                 if (!company.lpr_phone) missing.push('Номер ЛПР')
                 if (missing.length) {
-                  setSaveError('Заполните: ' + missing.join(', '))
+                  setCpError('Заполните: ' + missing.join(', '))
                   return
                 }
+                setCpError('')
                 try {
                   const { data } = await api.post(`/companies/${company.id}/cp`, {}, { responseType: 'blob' })
                   const url = URL.createObjectURL(data)
@@ -570,7 +573,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                   URL.revokeObjectURL(url)
                 } catch (e: any) {
                   const msg = e?.response?.data?.detail || 'Ошибка генерации КП'
-                  setSaveError(msg)
+                  setCpError(msg)
                 }
               }}
               className="w-full py-2 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
@@ -584,16 +587,16 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                 if (!company.lpr_phone) missing.push('Номер ЛПР')
                 if (!company.lpr_email) missing.push('Email ЛПР')
                 if (missing.length) {
-                  setSaveError('Заполните: ' + missing.join(', '))
+                  setCpError('Заполните: ' + missing.join(', '))
                   return
                 }
+                setCpError('')
                 try {
                   await api.post(`/companies/${company.id}/cp/send`)
-                  setSaveError('')
                   alert('КП отправлено на ' + company.lpr_email)
                 } catch (e: any) {
                   const msg = e?.response?.data?.detail || 'Ошибка отправки'
-                  setSaveError(msg)
+                  setCpError(msg)
                 }
               }}
               className="w-full py-2 bg-blue-600/50 hover:bg-blue-600/70 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
@@ -601,6 +604,11 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
               ✉️ Отправить по email
             </button>
           </div>
+          {cpError && (
+            <div className="mt-2 px-3 py-2 bg-error/10 rounded text-xs text-error border border-error/20">
+              {cpError}
+            </div>
+          )}
         </Section>
 
         {/* Activity */}
