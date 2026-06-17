@@ -165,9 +165,36 @@ def _empty_paragraph(doc_or_cell, after=60):
 NB = {'val': 'none', 'sz': '0', 'color': 'FFFFFF', 'space': '1'}
 
 
+def _set_paragraph_spacing(p, after=0, before=0, line=240):
+    pPr = p._p.get_or_add_pPr()
+    pPr_spacing = pPr.find(qn('w:spacing'))
+    if pPr_spacing is None:
+        pPr_spacing = parse_xml(f'<w:spacing {nsdecls("w")}/>')
+        pPr.append(pPr_spacing)
+    pPr_spacing.set(qn('w:after'), str(after))
+    pPr_spacing.set(qn('w:before'), str(before))
+    pPr_spacing.set(qn('w:line'), str(line))
+    return pPr
+
+
+def _add_bottom_border(pPr, sz="2", color="DDDDDD"):
+    pBdr = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="{sz}" w:color="{color}" w:space="1"/></w:pBdr>')
+    pPr.append(pBdr)
+
+
+def _add_orange_line(pPr):
+    pBdr = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="6" w:color="FE5B24" w:space="1"/></w:pBdr>')
+    pPr.append(pBdr)
+
+
+def _clear_cell(cell):
+    for p in list(cell.paragraphs):
+        p._p.getparent().remove(p._p)
+
+
 def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     doc = Document()
-    
+
     # Page setup
     section = doc.sections[0]
     section.page_width = Emu(11906 * 914400 // 1440)
@@ -176,52 +203,51 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     section.bottom_margin = Cm(0.88)
     section.left_margin = Cm(1.06)
     section.right_margin = Cm(1.06)
-    
-    # Default style
-    style = doc.styles['Normal']
-    style.font.name = 'Arial'
-    style.font.size = Pt(12)
-    style.paragraph_format.space_after = Pt(5)
-    style.paragraph_format.line_spacing = 1.1
-    
-    
+
+    # === TOP ORANGE LINE ===
+    line_p = doc.add_paragraph()
+    pPr = _set_paragraph_spacing(line_p, after=0, before=0, line=240)
+    _add_orange_line(pPr)
+
     # === HEADER ===
     header_table = doc.add_table(rows=1, cols=2)
     header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     header_table.columns[0].width = Cm(7.06)
     header_table.columns[1].width = Cm(11.83)
-    
+
     # Left cell: logo + text
     left_cell = header_table.cell(0, 0)
     _make_cell(left_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
-               margins={'left': 0, 'right': 0, 'top': 10, 'bottom': 10})
-    
-    nested = left_cell.table = left_cell.add_table(rows=1, cols=2)
+               margins={'left': 120, 'right': 60, 'top': 10, 'bottom': 10})
+
+    nested = left_cell.add_table(rows=1, cols=2)
     nested.columns[0].width = Cm(1.41)
     nested.columns[1].width = Cm(5.0)
-    
+
     img_cell = nested.cell(0, 0)
+    _clear_cell(img_cell)
     _make_cell(img_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
     logo_int_path = os.path.join(MEDIA_DIR, "intpay_logo.jpg")
     if os.path.exists(logo_int_path):
         _add_image_to_cell_left(img_cell, logo_int_path, 685800, 685800)
-    
+
     txt_cell = nested.cell(0, 1)
+    _clear_cell(txt_cell)
     _make_cell(txt_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
     _add_paragraph(txt_cell, [{'text': 'ИНТПЭЙ', 'size': 32, 'color': O, 'bold': True}],
                    alignment=WD_ALIGN_PARAGRAPH.LEFT)
-    
+
     # Right cell: novel + amf logos
     right_cell = header_table.cell(0, 1)
     _make_cell(right_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
-               margins={'left': 0, 'right': 0, 'top': 20, 'bottom': 10})
-    
+               margins={'left': 0, 'right': 60, 'top': 20, 'bottom': 10})
+
     logo_novel_path = os.path.join(MEDIA_DIR, "logo_novel.png")
     logo_amf_path = os.path.join(MEDIA_DIR, "logo-1.png")
-    
-    right_p = _add_paragraph(right_cell, alignment=WD_ALIGN_PARAGRAPH.RIGHT, spacing_after=0, line=240)
+
+    right_p = _add_paragraph(right_cell, alignment=WD_ALIGN_PARAGRAPH.RIGHT, spacing_after=0, line=240, spacing_before=0)
     if os.path.exists(logo_novel_path):
         right_run = right_p.add_run()
         right_run.add_picture(logo_novel_path, width=Emu(762000), height=Emu(228600))
@@ -230,30 +256,25 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     if os.path.exists(logo_amf_path):
         right_run2 = right_p.add_run()
         right_run2.add_picture(logo_amf_path, width=Emu(666750), height=Emu(342900))
-    
-    # === ORANGE LINE ===
-    line_p = doc.add_paragraph()
-    line_pPr = line_p._p.get_or_add_pPr()
-    pBdr = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="6" w:color="FE5B24" w:space="1"/></w:pBdr>')
-    line_pPr.append(pBdr)
-    line_pPr_sp = line_pPr.find(qn('w:spacing'))
-    if line_pPr_sp is None:
-        line_pPr_sp = parse_xml(f'<w:spacing {nsdecls("w")}/>')
-        line_pPr.append(line_pPr_sp)
-    line_pPr_sp.set(qn('w:line'), '240')
-    line_pPr_sp.set(qn('w:after'), '0')
-    line_pPr_sp.set(qn('w:before'), '0')
-    
+
+    # === EMPTY PARAGRAPH BETWEEN HEADER AND CONTENT (after=120) ===
+    spacer_p = doc.add_paragraph()
+    _set_paragraph_spacing(spacer_p, after=120, before=0, line=240)
+
     # === CONTENT SECTION ===
     content_table = doc.add_table(rows=1, cols=1)
     content_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     content_table.columns[0].width = Cm(18.88)
-    
+
     content_cell = content_table.cell(0, 0)
     _make_cell(content_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 1134, 'right': 1134, 'top': 20, 'bottom': 20})
-    
-    # Company info — single paragraph with line breaks
+
+    # Remove the default empty paragraph that comes with a new cell
+    for p in content_cell.paragraphs:
+        p._p.getparent().remove(p._p)
+
+    # P0: Company info
     ci = _add_paragraph(content_cell, alignment=WD_ALIGN_PARAGRAPH.RIGHT, spacing_after=40, line=248)
     _add_run(ci, 'Компания: ', 22, L)
     _add_run(ci, company_name, 22, D, True)
@@ -262,18 +283,20 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     ci.add_run().add_break()
     _add_run(ci, 'Тел: ', 22, L)
     _add_run(ci, lpr_phone, 22, D, True)
-    
+
+    # P1: Empty (after=4)
     _empty_paragraph(content_cell, after=4)
-    
-    # Salutation
+
+    # P2: Salutation
     _add_paragraph(content_cell, [
         {'text': 'Уважаемый ', 'size': 24, 'color': D, 'bold': False},
         {'text': f'{lpr_firstname}!', 'size': 24, 'color': O, 'bold': True},
     ], spacing_before=40, spacing_after=40, line=248)
-    
+
+    # P3: Empty (after=120)
     _empty_paragraph(content_cell, after=120)
-    
-    # Intro
+
+    # P4: Intro
     _add_paragraph(content_cell, [
         {'text': 'Мы — ', 'size': 24, 'color': D, 'bold': False},
         {'text': 'ИНТПЭЙ', 'size': 24, 'color': O, 'bold': True},
@@ -283,26 +306,31 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         {'text': '24 года', 'size': 24, 'color': D, 'bold': True},
         {'text': ' на рынке, портфель недвижимости >100 000 м², телеканалы «Моя Планета» и «Наука» с аудиторией >50 млн человек, собственная платёжная система с выпуском карт VISA.', 'size': 24, 'color': D, 'bold': False},
     ], spacing_after=40, line=248)
-    
-    # Small spacer between intro and AMF
+
+    # P5: Empty (after=2)
     _empty_paragraph(content_cell, after=2)
 
-    # AMF paragraph
+    # P6: AMF paragraph
     _add_paragraph(content_cell, [
         {'text': 'Партнёрство с ', 'size': 24, 'color': D, 'bold': False},
         {'text': 'Арабским валютным фондом (AMF)', 'size': 24, 'color': D, 'bold': True},
         {'text': ' гарантирует полную юридическую чистоту каждого перевода.', 'size': 24, 'color': D, 'bold': False},
     ], spacing_after=40, line=248)
-    
-    # Section label: НАШИ ПРЕИМУЩЕСТВА
+
+    # P7: Empty (after=4)
+    _empty_paragraph(content_cell, after=4)
+
+    # P8: НАШИ ПРЕИМУЩЕСТВА
     section_p = _add_paragraph(content_cell, [{'text': 'НАШИ ПРЕИМУЩЕСТВА', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
-    section_pPr = section_p._p.get_or_add_pPr()
-    pBdr2 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
-    section_pPr.append(pBdr2)
-    
-    _empty_paragraph(content_cell, after=1)
-    
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
+    _add_bottom_border(section_p._p.get_or_add_pPr())
+
+    # P9: Empty (after=2)
+    _empty_paragraph(content_cell, after=2)
+
+    # P10: Empty (after=4)
+    _empty_paragraph(content_cell, after=4)
+
     # Advantages 2x2 table
     adv_items = [
         ('Экономия до 70%', 'Комиссия от 0,5% вместо банковских 2–5%.'),
@@ -310,71 +338,73 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         ('Валютный контроль', 'Полный пакет документов для ЦБ и вашего банка.'),
         ('Любые направления', 'Европа, Азия, ОАЭ, Китай, Великобритания, США.'),
     ]
-    
+
     adv_table = content_cell.add_table(rows=2, cols=3)
     adv_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    
+
     be = {'val': 'single', 'sz': '1', 'color': 'EEEEEE', 'space': '1'}
     bl = {'val': 'single', 'sz': '4', 'color': 'FE5B24', 'space': '1'}
-    
+
     for i, (title, desc) in enumerate(adv_items):
         row_idx = i // 2
-        col_idx = (i % 2) * 2  # 0 or 2
+        col_idx = (i % 2) * 2
         cell = adv_table.cell(row_idx, col_idx)
+        _clear_cell(cell)
         _make_cell(cell, borders={'top': be, 'bottom': be, 'left': bl, 'right': be},
                    margins={'top': 20, 'bottom': 20, 'left': 80, 'right': 80})
         _add_paragraph(cell, [{'text': title, 'size': 22, 'color': O, 'bold': True}], spacing_after=40, line=248)
         _add_paragraph(cell, [{'text': desc, 'size': 20, 'color': G, 'bold': False}], spacing_after=40, line=248)
-        
+
         if col_idx == 0:
             sep_cell = adv_table.cell(row_idx, 1)
             _make_cell(sep_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
-            _empty_paragraph(sep_cell, after=0)
-    
-    # Section label: СХЕМА РАБОТЫ
+
+    # P11: СХЕМА РАБОТЫ
     section_p2 = _add_paragraph(content_cell, [{'text': 'СХЕМА РАБОТЫ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
-    section_pPr2 = section_p2._p.get_or_add_pPr()
-    pBdr3 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
-    section_pPr2.append(pBdr3)
-    
-    _empty_paragraph(content_cell, after=1)
-    
-    # Steps table
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
+    _add_bottom_border(section_p2._p.get_or_add_pPr())
+
+    # P12: Empty (after=2)
+    _empty_paragraph(content_cell, after=2)
+
+    # P13: Empty (after=4)
+    _empty_paragraph(content_cell, after=4)
+
+    # Steps table — three separate paragraphs per cell
     steps_data = [
         ('01', 'Заявка', '→ ответ за 30 минут'),
         ('02', 'Договор', '→ тариф под ваш объём'),
         ('03', 'Перевод', '→ зачисление за 1–3 дня'),
     ]
-    
+
     steps_table = content_cell.add_table(rows=1, cols=5)
     steps_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    
+
     for i, (num, title, desc) in enumerate(steps_data):
         cell = steps_table.cell(0, i * 2)
-        _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
-                   margins={'top': 10, 'bottom': 10, 'left': 20, 'right': 20},
-                   vertical_align="top")
-        # Single paragraph with line breaks — compact
-        step_p = _add_paragraph(cell, alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=248)
-        _add_run(step_p, num, 20, O, True)
-        step_p.add_run().add_break()
-        _add_run(step_p, f'{title} {desc}', 22, D)
-        
+        _clear_cell(cell)
+        _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
+
+        _add_paragraph(cell, [{'text': num, 'size': 20, 'color': O, 'bold': True}],
+                       alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
+        _add_paragraph(cell, [{'text': title, 'size': 22, 'color': D, 'bold': True}],
+                       alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
+        _add_paragraph(cell, [{'text': desc, 'size': 18, 'color': G, 'bold': False}],
+                       alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
+
         if i < 2:
             sep = steps_table.cell(0, i * 2 + 1)
             _make_cell(sep, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
-    
-    # Section label: ПОЧЕМУ НАМ ДОВЕРЯЮТ
+
+    # P14: ПОЧЕМУ НАМ ДОВЕРЯЮТ
     section_p3 = _add_paragraph(content_cell, [{'text': 'ПОЧЕМУ НАМ ДОВЕРЯЮТ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
-    section_pPr3 = section_p3._p.get_or_add_pPr()
-    pBdr4 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
-    section_pPr3.append(pBdr4)
-    
-    _empty_paragraph(content_cell, after=1)
-    
-    # Trust items
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
+    _add_bottom_border(section_p3._p.get_or_add_pPr())
+
+    # P15: Empty (after=2)
+    _empty_paragraph(content_cell, after=2)
+
+    # P16-P18: Trust items
     trust_items = [
         '24 года на рынке',
         'Партнёрство с AMF',
@@ -384,73 +414,67 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         _add_paragraph(content_cell, [
             {'text': '✓ ', 'size': 22, 'color': O, 'bold': True},
             {'text': item, 'size': 22, 'color': D, 'bold': False},
-        ], spacing_after=20, line=248, indent_left=400)
-    
-    # Section label: БАНКИ-ПАРТНЁРЫ
+        ], spacing_after=20, line=248)
+
+    # P19: Empty (after=4)
+    _empty_paragraph(content_cell, after=4)
+
+    # P20: БАНКИ-ПАРТНЁРЫ
     section_p4 = _add_paragraph(content_cell, [{'text': 'БАНКИ-ПАРТНЁРЫ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
-    section_pPr4 = section_p4._p.get_or_add_pPr()
-    pBdr5 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
-    section_pPr4.append(pBdr5)
-    
-    _empty_paragraph(content_cell, after=1)
-    
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
+    _add_bottom_border(section_p4._p.get_or_add_pPr())
+
+    # P21: Empty (after=2)
+    _empty_paragraph(content_cell, after=2)
+
+    # P22: Empty (after=4)
+    _empty_paragraph(content_cell, after=4)
+
     # Banks logos
     banks_table = content_cell.add_table(rows=1, cols=3)
     banks_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    
-    bank_logos = [
-        (os.path.join(MEDIA_DIR, "alfa_bank.png"), 100, 16),
-        (os.path.join(MEDIA_DIR, "sovcombank.png"), 120, 16),
-        (os.path.join(MEDIA_DIR, "mts_bank.png"), 100, 16),
+
+    bank_logo_specs = [
+        (os.path.join(MEDIA_DIR, "alfa_bank.png"), 952500, 152400),
+        (os.path.join(MEDIA_DIR, "sovcombank.png"), 1143000, 152400),
+        (os.path.join(MEDIA_DIR, "mts_bank.png"), 952500, 152400),
     ]
-    for i, (bpath, w, h) in enumerate(bank_logos):
-        cell = banks_table.cell(0, i)
-        _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
-                   margins={'top': 5, 'bottom': 5, 'left': 20, 'right': 20})
+    for ci, (bpath, w_emu, h_emu) in enumerate(bank_logo_specs):
+        cell = banks_table.cell(0, ci)
+        _clear_cell(cell)
+        _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
         if os.path.exists(bpath):
-            w_emu = int(w * 914400 / 96)
-            h_emu = int(h * 914400 / 96)
             _add_image_to_cell(cell, bpath, w_emu, h_emu)
-    
-    _empty_paragraph(content_cell, after=1)
-    
-    # P.S.
+
+    # P23: P.S.
     _add_paragraph(content_cell, [
         {'text': 'P.S. ', 'size': 22, 'color': O, 'bold': True},
         {'text': 'Пришлите один платёж — сделаем перевод за 0,5% и покажем разницу. Отвечаем на заявку в течение 30 минут.', 'size': 22, 'color': D, 'bold': False},
-    ], spacing_after=0, line=248)
-    
+    ], spacing_after=0, spacing_before=0, line=248)
+
     # === BOTTOM ORANGE LINE ===
     line_p2 = doc.add_paragraph()
-    line_pPr2 = line_p2._p.get_or_add_pPr()
-    pBdr6 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="6" w:color="FE5B24" w:space="1"/></w:pBdr>')
-    line_pPr2.append(pBdr6)
-    line_pPr_sp2 = line_pPr2.find(qn('w:spacing'))
-    if line_pPr_sp2 is None:
-        line_pPr_sp2 = parse_xml(f'<w:spacing {nsdecls("w")}/>')
-        line_pPr2.append(line_pPr_sp2)
-    line_pPr_sp2.set(qn('w:line'), '240')
-    line_pPr_sp2.set(qn('w:after'), '120')
-    line_pPr_sp2.set(qn('w:before'), '0')
-    
+    pPr2 = _set_paragraph_spacing(line_p2, after=0, before=0, line=240)
+    _add_orange_line(pPr2)
+
     # === FOOTER ===
     footer_table = doc.add_table(rows=1, cols=1)
     footer_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     footer_table.columns[0].width = Cm(18.88)
-    
+
     footer_cell = footer_table.cell(0, 0)
+    _clear_cell(footer_cell)
     _make_cell(footer_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 200, 'right': 200, 'top': 25, 'bottom': 25})
-    
+
     _add_paragraph(footer_cell, [{'text': 'Свяжитесь с нами для индивидуального тарифа:', 'size': 22, 'color': D, 'bold': True}],
                    alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
-    
-    # Contact line with clickable links
+
     contact_p = _add_paragraph(footer_cell, alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
     _add_hyperlink(contact_p, 'Сайт — intpaypro.ru', 'https://intpaypro.ru', 20, G)
     _add_run(contact_p, '  ·  ', 20, L)
     _add_hyperlink(contact_p, 'E-mail — info@intpaypro.ru', 'mailto:info@intpaypro.ru', 20, G)
+    _add_run(contact_p, '  ·  ', 20, L)
     tg_path = os.path.join(MEDIA_DIR, "tg_logo.png")
     if os.path.exists(tg_path):
         tg_run = contact_p.add_run('  ')
@@ -458,7 +482,17 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         tg_run2 = contact_p.add_run()
         tg_run2.add_picture(tg_path, width=Emu(133350), height=Emu(171450))
         _add_hyperlink(contact_p, ' @in_veritate', 'https://t.me/in_veritate', 20, G)
-    
+
+    # Clean up auto-generated empty paragraphs in content cell
+    for p in list(content_cell.paragraphs):
+        pPr = p._p.find(qn('w:pPr'))
+        if pPr is not None:
+            sp = pPr.find(qn('w:spacing'))
+            if sp is not None:
+                continue
+        if not p.text.strip():
+            p._p.getparent().remove(p._p)
+
     # Write to buffer
     buf = io.BytesIO()
     doc.save(buf)
