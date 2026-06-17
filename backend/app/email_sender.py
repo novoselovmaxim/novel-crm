@@ -17,8 +17,10 @@ def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> No
     msg["From"] = Header("ИНТПЭЙ", "utf-8").encode() + " <info@intpaypro.ru>"
     msg["To"] = recipient_email
     msg["Subject"] = "КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ"
+    msg["Reply-To"] = "info@intpaypro.ru"
     msg["X-Mailer"] = "Novel CRM"
     msg["Precedence"] = "bulk"
+    msg["List-Unsubscribe"] = "<mailto:info@intpaypro.ru?subject=unsubscribe>"
 
     text = f"""Коммерческое предложение — валютные платежи от ИНТПЭЙ / ГК НОВЕЛЬ
 
