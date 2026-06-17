@@ -354,12 +354,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
     _add_bottom_border(section_p2._p.get_or_add_pPr())
 
-    # P12: Empty (after=2)
-    _empty_paragraph(content_cell, after=2)
-
-    # P13: Empty (after=4)
-    _empty_paragraph(content_cell, after=4)
-
     # Steps table — three separate paragraphs per cell
     steps_data = [
         ('01', 'Заявка', '→ ответ за 30 минут'),
@@ -374,8 +368,10 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         cell = steps_table.cell(0, i * 2)
         _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
 
-        _add_paragraph(cell, [{'text': num, 'size': 20, 'color': O, 'bold': True}],
-                       alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
+        num_p = cell.paragraphs[0]
+        num_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _set_paragraph_spacing(num_p, after=40, before=0, line=248)
+        _add_run(num_p, num, 20, O, True)
         _add_paragraph(cell, [{'text': title, 'size': 22, 'color': D, 'bold': True}],
                        alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
         _add_paragraph(cell, [{'text': desc, 'size': 18, 'color': G, 'bold': False}],
