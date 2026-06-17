@@ -331,14 +331,11 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     adv_table = content_cell.add_table(rows=2, cols=3)
     adv_table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    be = {'val': 'single', 'sz': '1', 'color': 'EEEEEE', 'space': '1'}
-    bl = {'val': 'single', 'sz': '4', 'color': 'FE5B24', 'space': '1'}
-
     for i, (title, desc) in enumerate(adv_items):
         row_idx = i // 2
         col_idx = (i % 2) * 2
         cell = adv_table.cell(row_idx, col_idx)
-        _make_cell(cell, borders={'top': be, 'bottom': be, 'left': bl, 'right': be},
+        _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                    margins={'top': 20, 'bottom': 20, 'left': 80, 'right': 80})
         title_p = cell.paragraphs[0]
         _set_paragraph_spacing(title_p, after=40, before=0, line=248)
@@ -409,12 +406,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
     _add_bottom_border(section_p4._p.get_or_add_pPr())
 
-    # P21: Empty (after=2)
-    _empty_paragraph(content_cell, after=2)
-
-    # P22: Empty (after=4)
-    _empty_paragraph(content_cell, after=4)
-
     # Banks logos
     banks_table = content_cell.add_table(rows=1, cols=3)
     banks_table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -428,7 +419,11 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         cell = banks_table.cell(0, ci)
         _make_cell(cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB})
         if os.path.exists(bpath):
-            _add_image_to_cell(cell, bpath, w_emu, h_emu)
+            bank_p = cell.paragraphs[0]
+            bank_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _set_paragraph_spacing(bank_p, after=0, before=0, line=240)
+            bank_run = bank_p.add_run()
+            bank_run.add_picture(bpath, width=Emu(w_emu), height=Emu(h_emu))
 
     # P23: P.S.
     _add_paragraph(content_cell, [
@@ -450,8 +445,10 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     _make_cell(footer_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 200, 'right': 200, 'top': 25, 'bottom': 25})
 
-    _add_paragraph(footer_cell, [{'text': 'Свяжитесь с нами для индивидуального тарифа:', 'size': 22, 'color': D, 'bold': True}],
-                   alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
+    footer_p = footer_cell.paragraphs[0]
+    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_paragraph_spacing(footer_p, after=40, before=0, line=248)
+    _add_run(footer_p, 'Свяжитесь с нами для индивидуального тарифа:', 22, D, True)
 
     contact_p = _add_paragraph(footer_cell, alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=40, line=248)
     _add_hyperlink(contact_p, 'Сайт — intpaypro.ru', 'https://intpaypro.ru', 20, G)
