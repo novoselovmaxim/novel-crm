@@ -4,7 +4,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.utils import formataddr
+from email.header import Header
 
 from .database import settings
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> None:
     """Send CP HTML as email body via SMTP."""
     msg = MIMEMultipart("alternative")
-    msg["From"] = formataddr(("ИНТПЭЙ", "info@intpaypro.ru"))
+    msg["From"] = f"{Header('ИНТПЭЙ', 'utf-8')} <info@intpaypro.ru>"
     msg["To"] = recipient_email
     msg["Subject"] = "КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ"
     msg["X-Mailer"] = "Novel CRM"
