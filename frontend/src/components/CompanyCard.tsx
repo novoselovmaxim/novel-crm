@@ -145,7 +145,7 @@ function formatNumericString(val: string | null | undefined) {
   return num.toLocaleString('ru-RU')
 }
 
-export default function CompanyCard({ company: initialCompany, onClose, onAssign, onNavigateToCompany }: { company: Company; onClose: () => void; onAssign?: (id: string) => void; onNavigateToCompany?: (id: string) => void }) {
+export default function CompanyCard({ company: initialCompany, onClose, onAssign, onFieldUpdate, onNavigateToCompany }: { company: Company; onClose: () => void; onAssign?: (id: string) => void; onFieldUpdate?: (field: string, value: string | number | null) => void; onNavigateToCompany?: (id: string) => void }) {
   const [company, setCompany] = useState(initialCompany)
   const [notes, setNotes] = useState('')
   const [selectedStatus, setSelectedStatus] = useState(company.call_status)
@@ -229,6 +229,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const handleFieldUpdate = (field: string, val: string) => {
     const parsed = NUM_FIELDS.has(field) ? (val ? parseInt(val.replace(/\s/g, ''), 10) : null) : val
     setCompany(prev => ({ ...prev, [field]: parsed }))
+    onFieldUpdate?.(field, parsed)
   }
 
   useEffect(() => {

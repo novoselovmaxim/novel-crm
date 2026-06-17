@@ -771,7 +771,7 @@ export default function CompanyTable() {
       {/* Company Card - right side */}
       {selectedCompany && (
         <div className="shrink-0 border-l border-muted/10">
-          <CompanyCard company={selectedCompany} onClose={() => setSelectedCompany(null)} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onNavigateToCompany={handleMeetingClick} />
+          <CompanyCard company={selectedCompany} onClose={() => setSelectedCompany(null)} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} />
         </div>
       )}
 
