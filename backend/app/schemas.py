@@ -50,6 +50,7 @@ class CompanyBase(BaseModel):
     tax_office: Optional[str] = None
     phone: Optional[str] = None
     lpr_phone: Optional[str] = None
+    lpr_email: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
     linkedin: Optional[str] = None
@@ -106,6 +107,7 @@ class CompanyUpdate(BaseModel):
     tax_office: Optional[str] = None
     phone: Optional[str] = None
     lpr_phone: Optional[str] = None
+    lpr_email: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
     linkedin: Optional[str] = None

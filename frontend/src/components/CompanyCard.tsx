@@ -545,7 +545,63 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
             <Field label="Фин. директор" value={company.fin_director} field="fin_director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="ИНН директора" value={company.director_inn} field="director_inn" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Номер ЛПР" value={company.lpr_phone} field="lpr_phone" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <Field label="Email ЛПР" value={company.lpr_email} field="lpr_email" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
           </Section>
+
+        {/* CP Actions */}
+        <Section title="Коммерческое предложение">
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={async () => {
+                const missing: string[] = []
+                if (!company.director) missing.push('Руководитель')
+                if (!company.lpr_phone) missing.push('Номер ЛПР')
+                if (missing.length) {
+                  setSaveError('Заполните: ' + missing.join(', '))
+                  return
+                }
+                try {
+                  const { data } = await api.post(`/companies/${company.id}/cp`, {}, { responseType: 'blob' })
+                  const url = URL.createObjectURL(data)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `КП_${company.name}.docx`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                } catch (e: any) {
+                  const msg = e?.response?.data?.detail || 'Ошибка генерации КП'
+                  setSaveError(msg)
+                }
+              }}
+              className="w-full py-2 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              📄 Скачать Word
+            </button>
+            <button
+              onClick={async () => {
+                const missing: string[] = []
+                if (!company.director) missing.push('Руководитель')
+                if (!company.lpr_phone) missing.push('Номер ЛПР')
+                if (!company.lpr_email) missing.push('Email ЛПР')
+                if (missing.length) {
+                  setSaveError('Заполните: ' + missing.join(', '))
+                  return
+                }
+                try {
+                  await api.post(`/companies/${company.id}/cp/send`)
+                  setSaveError('')
+                  alert('КП отправлено на ' + company.lpr_email)
+                } catch (e: any) {
+                  const msg = e?.response?.data?.detail || 'Ошибка отправки'
+                  setSaveError(msg)
+                }
+              }}
+              className="w-full py-2 bg-blue-600/50 hover:bg-blue-600/70 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              ✉️ Отправить по email
+            </button>
+          </div>
+        </Section>
 
         {/* Activity */}
         <Section title="Профиль деятельности">

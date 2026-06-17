@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, distinct, case
 from typing import Optional
@@ -12,6 +12,8 @@ from ..models import User, Company, CallLog, AuditLog, ImportSourceData, Company
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 from ..notifications import notifier
+from ..cp_generator import generate_cp, generate_cp_html
+from ..email_sender import send_cp_email
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -557,3 +559,73 @@ async def export_companies(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=companies.csv"}
     )
+
+
+@router.post("/{company_id}/cp")
+async def generate_company_cp(
+    company_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    if not company.director:
+        raise HTTPException(status_code=400, detail="Заполните поле «Руководитель»")
+    if not company.lpr_phone:
+        raise HTTPException(status_code=400, detail="Заполните поле «Номер ЛПР»")
+
+    lpr_firstname = company.director.split()[0] if company.director.split() else ""
+    buf = generate_cp(
+        company_name=company.name or "",
+        lpr_name=company.director,
+        lpr_phone=company.lpr_phone,
+        lpr_firstname=lpr_firstname,
+    )
+
+    safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in (company.name or "proposal"))
+    return Response(
+        content=buf.read(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="CP_{safe_name}.docx"'},
+    )
+
+
+@router.post("/{company_id}/cp/send")
+async def send_company_cp(
+    company_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    if not company.director:
+        raise HTTPException(status_code=400, detail="Заполните поле «Руководитель»")
+    if not company.lpr_phone:
+        raise HTTPException(status_code=400, detail="Заполните поле «Номер ЛПР»")
+    if not company.lpr_email:
+        raise HTTPException(status_code=400, detail="Заполните поле «Email ЛПР»")
+
+    lpr_firstname = company.director.split()[0] if company.director.split() else ""
+    html = generate_cp_html(
+        company_name=company.name or "",
+        lpr_name=company.director,
+        lpr_phone=company.lpr_phone,
+        lpr_firstname=lpr_firstname,
+    )
+
+    try:
+        send_cp_email(
+            recipient_email=company.lpr_email,
+            html_body=html,
+            company_name=company.name or "",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка отправки email: {e}")
+
+    return {"message": f"КП отправлено на {company.lpr_email}"}

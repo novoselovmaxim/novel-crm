@@ -12,6 +12,7 @@ export interface Company {
   tax_office?: string | null
   phone: string | null
   lpr_phone?: string | null
+  lpr_email?: string | null
   email: string | null
   website: string | null
   linkedin?: string | null

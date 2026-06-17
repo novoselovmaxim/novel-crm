@@ -31,6 +31,10 @@ tar xzf /tmp/frontend-dist.tar.gz -C frontend/
 rm -f /tmp/frontend-dist.tar.gz
 "
 
+echo "🖼️ Copying media files (logos) to VPS..."
+$SSH_CMD "mkdir -p $VPS_DIR/backend/app/media"
+scp -i $VPS_KEY -o StrictHostKeyChecking=no backend/app/media/* $VPS_USER@$VPS_HOST:$VPS_DIR/backend/app/media/
+
 echo "🐳 Rebuilding backend..."
 $SSH_CMD "cd $VPS_DIR && docker compose build backend 2>&1 | tail -5"
 

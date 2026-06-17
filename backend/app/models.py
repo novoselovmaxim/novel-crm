@@ -53,6 +53,7 @@ class Company(Base):
     tax_office = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     lpr_phone = Column(String, nullable=True)
+    lpr_email = Column(String, nullable=True)
     email = Column(String, nullable=True)
     website = Column(String, nullable=True)
     linkedin = Column(String, nullable=True)
