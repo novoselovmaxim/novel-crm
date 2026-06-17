@@ -85,7 +85,7 @@ def _add_run(paragraph, text, size=12, color=D, bold=False, font="Arial"):
     return run
 
 
-def _add_paragraph(doc_or_cell, text_runs=None, alignment=None, spacing_after=60, spacing_before=0, line=264, indent_left=None):
+def _add_paragraph(doc_or_cell, text_runs=None, alignment=None, spacing_after=60, spacing_before=0, line=248, indent_left=None):
     p = doc_or_cell.add_paragraph()
     
     pPr = p._p.get_or_add_pPr()
@@ -226,17 +226,15 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     _make_cell(content_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 1134, 'right': 1134, 'top': 20, 'bottom': 20})
     
-    # Company info
-    _add_paragraph(content_cell, [
-        {'text': 'Компания: ', 'size': 22, 'color': L, 'bold': False},
-        {'text': company_name, 'size': 22, 'color': D, 'bold': True},
-    ], alignment=WD_ALIGN_PARAGRAPH.RIGHT)
-    # lpr_name on next line
-    _add_paragraph(content_cell, [
-        {'text': lpr_name, 'size': 22, 'color': D, 'bold': True},
-        {'text': '\nТел: ', 'size': 22, 'color': L, 'bold': False},
-        {'text': lpr_phone, 'size': 22, 'color': D, 'bold': True},
-    ], alignment=WD_ALIGN_PARAGRAPH.RIGHT)
+    # Company info — single paragraph with line breaks
+    ci = _add_paragraph(content_cell, alignment=WD_ALIGN_PARAGRAPH.RIGHT, spacing_after=40, line=248)
+    _add_run(ci, 'Компания: ', 22, L)
+    _add_run(ci, company_name, 22, D, True)
+    ci.add_run().add_break()
+    _add_run(ci, lpr_name, 22, D, True)
+    ci.add_run().add_break()
+    _add_run(ci, 'Тел: ', 22, L)
+    _add_run(ci, lpr_phone, 22, D, True)
     
     _empty_paragraph(content_cell, after=4)
     
@@ -259,6 +257,9 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         {'text': ' на рынке, портфель недвижимости >100 000 м², телеканалы «Моя Планета» и «Наука» с аудиторией >50 млн человек, собственная платёжная система с выпуском карт VISA.', 'size': 24, 'color': D, 'bold': False},
     ], spacing_after=40, line=248)
     
+    # Small spacer between intro and AMF
+    _empty_paragraph(content_cell, after=2)
+
     # AMF paragraph
     _add_paragraph(content_cell, [
         {'text': 'Партнёрство с ', 'size': 24, 'color': D, 'bold': False},
@@ -270,7 +271,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     
     # Section label: НАШИ ПРЕИМУЩЕСТВА
     section_p = _add_paragraph(content_cell, [{'text': 'НАШИ ПРЕИМУЩЕСТВА', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0)
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
     section_pPr = section_p._p.get_or_add_pPr()
     pBdr2 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
     section_pPr.append(pBdr2)
@@ -309,7 +310,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     
     # Section label: СХЕМА РАБОТЫ
     section_p2 = _add_paragraph(content_cell, [{'text': 'СХЕМА РАБОТЫ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0)
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
     section_pPr2 = section_p2._p.get_or_add_pPr()
     pBdr3 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
     section_pPr2.append(pBdr3)
@@ -345,7 +346,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     
     # Section label: ПОЧЕМУ НАМ ДОВЕРЯЮТ
     section_p3 = _add_paragraph(content_cell, [{'text': 'ПОЧЕМУ НАМ ДОВЕРЯЮТ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0)
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
     section_pPr3 = section_p3._p.get_or_add_pPr()
     pBdr4 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
     section_pPr3.append(pBdr4)
@@ -368,7 +369,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     
     # Section label: БАНКИ-ПАРТНЁРЫ
     section_p4 = _add_paragraph(content_cell, [{'text': 'БАНКИ-ПАРТНЁРЫ', 'size': 22, 'color': O, 'bold': True}],
-                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0)
+                                alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, line=240)
     section_pPr4 = section_p4._p.get_or_add_pPr()
     pBdr5 = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="2" w:color="DDDDDD" w:space="1"/></w:pBdr>')
     section_pPr4.append(pBdr5)
