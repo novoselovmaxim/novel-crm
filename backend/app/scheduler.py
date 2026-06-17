@@ -172,9 +172,9 @@ async def stale_check():
 def create_scheduler():
     scheduler = AsyncIOScheduler(timezone=MSK)
 
-    scheduler.add_job(morning_brief, "cron", hour=6, minute=0, id="morning_brief")
-    scheduler.add_job(evening_summary, "cron", hour=15, minute=0, id="evening_summary")
+    scheduler.add_job(morning_brief, "cron", hour=9, minute=0, id="morning_brief")
+    scheduler.add_job(evening_summary, "cron", hour=18, minute=0, id="evening_summary")
     scheduler.add_job(meeting_reminders, "interval", minutes=15, id="meeting_reminders")
-    scheduler.add_job(stale_check, "cron", hour=5, minute=0, id="stale_check")
+    scheduler.add_job(stale_check, "cron", hour=10, minute=0, id="stale_check")
 
     return scheduler
