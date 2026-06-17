@@ -320,12 +320,6 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
                                 alignment=WD_ALIGN_PARAGRAPH.CENTER, spacing_after=0, spacing_before=0, line=240)
     _add_bottom_border(section_p._p.get_or_add_pPr())
 
-    # P9: Empty (after=2)
-    _empty_paragraph(content_cell, after=2)
-
-    # P10: Empty (after=4)
-    _empty_paragraph(content_cell, after=4)
-
     # Advantages 2x2 table
     adv_items = [
         ('Экономия до 70%', 'Комиссия от 0,5% вместо банковских 2–5%.'),
@@ -346,7 +340,9 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         cell = adv_table.cell(row_idx, col_idx)
         _make_cell(cell, borders={'top': be, 'bottom': be, 'left': bl, 'right': be},
                    margins={'top': 20, 'bottom': 20, 'left': 80, 'right': 80})
-        _add_paragraph(cell, [{'text': title, 'size': 22, 'color': O, 'bold': True}], spacing_after=40, line=248)
+        title_p = cell.paragraphs[0]
+        _set_paragraph_spacing(title_p, after=40, before=0, line=248)
+        _add_run(title_p, title, 22, O, True)
         _add_paragraph(cell, [{'text': desc, 'size': 20, 'color': G, 'bold': False}], spacing_after=40, line=248)
 
         if col_idx == 0:
