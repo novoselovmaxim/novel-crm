@@ -86,10 +86,7 @@ def _add_run(paragraph, text, size=12, color=D, bold=False, font="Arial"):
 
 
 def _add_paragraph(doc_or_cell, text_runs=None, alignment=None, spacing_after=60, spacing_before=0, line=264, indent_left=None):
-    if isinstance(doc_or_cell, Document):
-        p = doc_or_cell.add_paragraph()
-    else:
-        p = doc_or_cell.add_paragraph()
+    p = doc_or_cell.add_paragraph()
     
     pPr = p._p.get_or_add_pPr()
     pPr_spacing = pPr.find(qn('w:spacing'))
