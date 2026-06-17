@@ -199,11 +199,9 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     section.left_margin = Cm(1.06)
     section.right_margin = Cm(1.06)
 
-    # === TOP ORANGE LINE ===
-    # python-docx 1.1.2 creates Document() with 1 paragraph; 1.2.0 with 0
-    line_p = doc.paragraphs[0] if doc.paragraphs else doc.add_paragraph()
-    pPr = _set_paragraph_spacing(line_p, after=0, before=0, line=240)
-    _add_orange_line(pPr)
+    # Silence default paragraph from Document() on 1.1.2
+    if doc.paragraphs:
+        _set_paragraph_spacing(doc.paragraphs[0], after=0, before=0, line=240)
 
     # === HEADER ===
     header_table = doc.add_table(rows=1, cols=2)
@@ -214,7 +212,7 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
     # Left cell: logo + text
     left_cell = header_table.cell(0, 0)
     _make_cell(left_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
-               margins={'left': 120, 'right': 60, 'top': 10, 'bottom': 10})
+               margins={'left': 120, 'right': 60, 'top': 0, 'bottom': 0})
 
     nested = left_cell.add_table(rows=1, cols=2)
     nested.columns[0].width = Cm(1.41)
@@ -225,23 +223,29 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
                margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
     logo_int_path = os.path.join(MEDIA_DIR, "intpay_logo.jpg")
     if os.path.exists(logo_int_path):
-        _add_image_to_cell_left(img_cell, logo_int_path, 685800, 685800)
+        img_p = img_cell.paragraphs[0]
+        _set_paragraph_spacing(img_p, after=0, before=0, line=240)
+        img_run = img_p.add_run()
+        img_run.add_picture(logo_int_path, width=Emu(685800), height=Emu(685800))
 
     txt_cell = nested.cell(0, 1)
     _make_cell(txt_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
                margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
-    _add_paragraph(txt_cell, [{'text': 'ИНТПЭЙ', 'size': 32, 'color': O, 'bold': True}],
-                   alignment=WD_ALIGN_PARAGRAPH.LEFT)
+    txt_p = txt_cell.paragraphs[0]
+    _set_paragraph_spacing(txt_p, after=0, before=0, line=240)
+    _add_run(txt_p, 'ИНТПЭЙ', 32, O, True)
 
     # Right cell: novel + amf logos
     right_cell = header_table.cell(0, 1)
     _make_cell(right_cell, borders={'top': NB, 'bottom': NB, 'left': NB, 'right': NB},
-               margins={'left': 0, 'right': 60, 'top': 20, 'bottom': 10})
+               margins={'left': 0, 'right': 0, 'top': 0, 'bottom': 0})
 
     logo_novel_path = os.path.join(MEDIA_DIR, "logo_novel.png")
     logo_amf_path = os.path.join(MEDIA_DIR, "logo-1.png")
 
-    right_p = _add_paragraph(right_cell, alignment=WD_ALIGN_PARAGRAPH.RIGHT, spacing_after=0, line=240, spacing_before=0)
+    right_p = right_cell.paragraphs[0]
+    _set_paragraph_spacing(right_p, after=0, before=0, line=240)
+    right_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     if os.path.exists(logo_novel_path):
         right_run = right_p.add_run()
         right_run.add_picture(logo_novel_path, width=Emu(762000), height=Emu(228600))
@@ -251,9 +255,10 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
         right_run2 = right_p.add_run()
         right_run2.add_picture(logo_amf_path, width=Emu(666750), height=Emu(342900))
 
-    # === EMPTY PARAGRAPH BETWEEN HEADER AND CONTENT (after=120) ===
-    spacer_p = doc.add_paragraph()
-    _set_paragraph_spacing(spacer_p, after=120, before=0, line=240)
+    # === THIN RED LINE BELOW HEADER ===
+    line_p = doc.add_paragraph()
+    pPr = _set_paragraph_spacing(line_p, after=0, before=0, line=240)
+    _add_orange_line(pPr)
 
     # === CONTENT SECTION ===
     content_table = doc.add_table(rows=1, cols=1)
