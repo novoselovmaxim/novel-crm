@@ -10,11 +10,46 @@ from .database import settings
 def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> None:
     """Send CP HTML as email body via SMTP."""
     msg = MIMEMultipart("alternative")
-    msg["From"] = settings.smtp_user
+    msg["From"] = "ИНТПЭЙ <info@intpaypro.ru>"
     msg["To"] = recipient_email
-    msg["Subject"] = f"Коммерческое предложение — {company_name}"
+    msg["Subject"] = "КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ"
+    msg["X-Mailer"] = "Novel CRM"
+    msg["Precedence"] = "bulk"
 
-    text = f"Коммерческое предложение для {company_name}\n\nОтправлено ИНТПЭЙ"
+    text = f"""Коммерческое предложение — валютные платежи от ИНТПЭЙ / ГК НОВЕЛЬ
+
+Компания: {company_name}
+
+Уважаемый клиент!
+
+Мы — ИНТПЭЙ, платёжное подразделение международного холдинга NOVEL GROUP.
+Партнёрство с Арабским валютным фондом (AMF) гарантирует полную юридическую чистоту каждого перевода.
+
+НАШИ ПРЕИМУЩЕСТВА:
+- Экономия до 70% (комиссия от 0,5%)
+- Скорость 1-3 дня
+- Валютный контроль
+- Любые направления
+
+СХЕМА РАБОТЫ:
+01 Заявка → ответ за 30 минут
+02 Договор → тариф под ваш объём
+03 Перевод → зачисление за 1-3 дня
+
+ПОЧЕМУ НАМ ДОВЕРЯЮТ:
+✓ 24 года на рынке
+✓ Партнёрство с AMF
+✓ Работаем через крупнейшие банки-партнёры
+
+БАНКИ-ПАРТНЁРЫ: Альфа-Банк, Совкомбанк, МТС Банк
+
+P.S. Пришлите один платёж — сделаем перевод за 0,5% и покажем разницу.
+
+Сайт: intpaypro.ru
+E-mail: info@intpaypro.ru
+Telegram: @in_veritate (https://t.me/in_veritate)
+
+Отправлено ИНТПЭЙ / ГК НОВЕЛЬ"""
     msg.attach(MIMEText(text, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 

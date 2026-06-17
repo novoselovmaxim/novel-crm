@@ -504,8 +504,8 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_firstname="
     ]:
         adv_rows += f"""<tr>
           <td style="padding:10px 20px 10px 15px;border-bottom:1px solid #eee;border-left:3px solid {O};vertical-align:top;width:50%">
-            <div style="font-size:14px;color:{O};font-weight:bold;margin-bottom:4px">{title}</div>
-            <div style="font-size:12px;color:{G}">{desc}</div>
+            <div style="font-size:15px;color:{O};font-weight:bold;margin-bottom:4px">{title}</div>
+            <div style="font-size:13px;color:{G}">{desc}</div>
           </td>
         </tr>"""
 
@@ -516,9 +516,9 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_firstname="
         ("03", "Перевод", "→ зачисление за 1–3 дня"),
     ]:
         steps_html += f"""<td style="padding:10px 15px;vertical-align:top;text-align:center;width:33%">
-          <div style="font-size:12px;color:{O};font-weight:bold">{num}</div>
-          <div style="font-size:14px;color:{D};font-weight:bold;margin:4px 0">{title}</div>
-          <div style="font-size:11px;color:{G}">{desc}</div>
+          <div style="font-size:13px;color:{O};font-weight:bold">{num}</div>
+          <div style="font-size:15px;color:{D};font-weight:bold;margin:4px 0">{title}</div>
+          <div style="font-size:12px;color:{G}">{desc}</div>
         </td>"""
 
     trust_list = "".join(
@@ -553,57 +553,57 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_firstname="
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td style="vertical-align:middle">{logo_block}</td>
         <td style="text-align:right;vertical-align:middle">
-          {f'<img src="{novel_logo}" style="height:16px;vertical-align:middle" alt="NOVEL"/>' if novel_logo else ""}
-          {f'<img src="{amf_logo}" style="height:24px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo else ""}
+          {f'<img src="{novel_logo}" style="height:18px;vertical-align:middle" alt="NOVEL"/>' if novel_logo else ""}
+          {f'<img src="{amf_logo}" style="height:26px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo else ""}
         </td>
       </tr></table>
     </td>
   </tr>
   <tr>
     <td style="padding:20px 30px">
-      <div style="text-align:right;font-size:13px;color:{L};margin-bottom:4px">Компания: <strong style="color:{D}">{company_name}</strong></div>
-      <div style="text-align:right;font-size:13px;color:{D};margin-bottom:16px">
+      <div style="text-align:right;font-size:14px;color:{L};margin-bottom:4px">Компания: <strong style="color:{D}">{company_name}</strong></div>
+      <div style="text-align:right;font-size:14px;color:{D};margin-bottom:16px">
         <strong>{lpr_name}</strong><br>
         <span style="color:{L}">Тел:</span> <strong>{lpr_phone}</strong>
       </div>
 
-      <p style="font-size:14px;color:{D};margin:8px 0">
+      <p style="font-size:16px;color:{D};margin:8px 0">
         Уважаемый <strong style="color:{O}">{lpr_firstname}!</strong>
       </p>
 
-      <p style="font-size:14px;color:{D};line-height:1.5;margin:12px 0">
+      <p style="font-size:16px;color:{D};line-height:1.5;margin:12px 0">
         Мы — <strong style="color:{O}">ИНТПЭЙ</strong>, платёжное подразделение международного холдинга
         <strong>NOVEL GROUP</strong>: <strong>24 года</strong> на рынке, портфель недвижимости &gt;100 000 м²,
         телеканалы «Моя Планета» и «Наука» с аудиторией &gt;50 млн человек, собственная платёжная система
         с выпуском карт VISA.
       </p>
 
-      <p style="font-size:14px;color:{D};line-height:1.5;margin:12px 0">
+      <p style="font-size:16px;color:{D};line-height:1.5;margin:12px 0">
         Партнёрство с <strong>Арабским валютным фондом (AMF)</strong> гарантирует полную юридическую
         чистоту каждого перевода.
       </p>
 
-      <div style="text-align:center;font-size:13px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin-bottom:12px">
+      <div style="text-align:center;font-size:14px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin-bottom:12px">
         НАШИ ПРЕИМУЩЕСТВА
       </div>
       <table width="100%" cellpadding="0" cellspacing="0">{adv_rows}</table>
 
-      <div style="text-align:center;font-size:13px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin:16px 0 12px">
+      <div style="text-align:center;font-size:14px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin:16px 0 12px">
         СХЕМА РАБОТЫ
       </div>
       <table width="100%" cellpadding="0" cellspacing="0"><tr>{steps_html}</tr></table>
 
-      <div style="text-align:center;font-size:13px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin:16px 0 12px">
+      <div style="text-align:center;font-size:14px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin:16px 0 12px">
         ПОЧЕМУ НАМ ДОВЕРЯЮТ
       </div>
       <table cellpadding="0" cellspacing="0">{trust_list}</table>
 
-      <div style="text-align:center;font-size:13px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin:16px 0 12px">
+      <div style="text-align:center;font-size:14px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin:16px 0 12px">
         БАНКИ-ПАРТНЁРЫ
       </div>
       <table width="100%" cellpadding="0" cellspacing="0"><tr>{bank_logos_html}</tr></table>
 
-      <p style="font-size:13px;color:{D};line-height:1.5;margin:16px 0">
+      <p style="font-size:14px;color:{D};line-height:1.5;margin:16px 0">
         <strong style="color:{O}">P.S.</strong> Пришлите один платёж — сделаем перевод за 0,5% и покажем
         разницу. Отвечаем на заявку в течение 30 минут.
       </p>
@@ -611,12 +611,12 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_firstname="
   </tr>
   <tr>
     <td style="border-top:3px solid {O};padding:15px 20px;text-align:center">
-      <p style="font-size:12px;color:{D};font-weight:bold;margin:0 0 8px">
+      <p style="font-size:13px;color:{D};font-weight:bold;margin:0 0 8px">
         Свяжитесь с нами для индивидуального тарифа:
       </p>
-      <p style="font-size:11px;color:{G};margin:0">
+      <p style="font-size:12px;color:{G};margin:0">
         Сайт — intpaypro.ru &nbsp;·&nbsp; E-mail — info@intpaypro.ru
-        {f'&nbsp;&nbsp;<img src="{tg_logo}" style="height:14px;vertical-align:middle" alt="TG"/> @in_veritate' if tg_logo else ""}
+        {f'&nbsp;&nbsp;<a href="https://t.me/in_veritate" style="color:{G};text-decoration:none"><img src="{tg_logo}" style="height:16px;vertical-align:middle" alt="TG"/> @in_veritate</a>' if tg_logo else ""}
       </p>
     </td>
   </tr>
