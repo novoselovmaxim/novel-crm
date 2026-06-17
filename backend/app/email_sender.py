@@ -18,6 +18,7 @@ def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> No
     msg.attach(MIMEText(text, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server:
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+        server.starttls()
         server.login(settings.smtp_user, settings.smtp_password)
         server.send_message(msg)
