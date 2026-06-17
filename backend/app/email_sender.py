@@ -4,6 +4,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 
 from .database import settings
 
@@ -13,8 +14,7 @@ logger = logging.getLogger(__name__)
 def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> None:
     """Send CP HTML as email body via SMTP."""
     msg = MIMEMultipart("alternative")
-    sender = settings.smtp_user
-    msg["From"] = "ИНТПЭЙ <info@intpaypro.ru>"
+    msg["From"] = formataddr(("ИНТПЭЙ", "info@intpaypro.ru"))
     msg["To"] = recipient_email
     msg["Subject"] = "КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ"
     msg["X-Mailer"] = "Novel CRM"
@@ -61,8 +61,5 @@ Telegram: @in_veritate (https://t.me/in_veritate)
         server.set_debuglevel(1)
         server.starttls()
         server.login(settings.smtp_user, settings.smtp_password)
-        result = server.sendmail(sender, [recipient_email], msg.as_string())
-        if result:
-            logger.warning(f"SMTP partial delivery fail: {result}")
-        else:
-            logger.info(f"Email sent to {recipient_email}")
+        server.send_message(msg)
+        logger.info(f"Email sent to {recipient_email}")
