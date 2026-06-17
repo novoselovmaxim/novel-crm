@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     jwt_access_expire_minutes: int = 15
     jwt_refresh_expire_days: int = 30
     smtp_host: str = "mail.netangels.ru"
-    smtp_port: int = 465
+    smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
 
