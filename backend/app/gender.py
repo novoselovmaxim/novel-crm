@@ -1,7 +1,4 @@
 from typing import Optional
-from pymorphy2 import MorphAnalyzer
-
-morph = MorphAnalyzer()
 
 
 def parse_full_name(full_name: str) -> dict:
@@ -22,19 +19,15 @@ def parse_full_name(full_name: str) -> dict:
 def detect_gender(full_name: str) -> Optional[str]:
     parsed = parse_full_name(full_name)
     patronymic = parsed["patronymic"]
-    if not patronymic:
-        first = parsed["first"]
-        if first:
-            parsed_word = morph.parse(first)[0]
-            if "femn" in parsed_word.tag:
-                return "female"
-            if "masc" in parsed_word.tag:
-                return "male"
-        return None
-    parsed_word = morph.parse(patronymic)[0]
-    if "femn" in parsed_word.tag:
-        return "female"
-    if "masc" in parsed_word.tag:
+    if patronymic:
+        if patronymic.endswith(("вич", "ич")):
+            return "male"
+        if patronymic.endswith(("вна", "ична")):
+            return "female"
+    first = parsed["first"]
+    if first:
+        if first[-1] in ("а", "я"):
+            return "female"
         return "male"
     return None
 

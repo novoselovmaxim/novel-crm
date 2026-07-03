@@ -3,9 +3,6 @@ uvicorn[standard]==0.34.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 pydantic==2.10.4
-setuptools==75.8.0
-pymorphy2==0.9.1
-pymorphy2-dicts-ru==2.4.417127.4579844
 pydantic-settings==2.7.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
