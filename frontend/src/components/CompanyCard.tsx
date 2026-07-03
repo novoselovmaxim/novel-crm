@@ -105,6 +105,44 @@ function Field({ label, value, field, companyId, rawValue, onUpdate, onError, hi
   )
 }
 
+function GenderField({ value, companyId, onUpdate, onError }: {
+  value: string | null | undefined
+  companyId?: string
+  onUpdate?: (field: string, value: string) => void
+  onError?: (msg: string) => void
+}) {
+  const savingRef = useRef(false)
+  const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value || null
+    if (!companyId || savingRef.current) return
+    savingRef.current = true
+    try {
+      await api.patch(`/companies/${companyId}`, { director_gender: val })
+      onUpdate?.('director_gender', val || '')
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Не удалось сохранить'
+      onError?.(msg)
+    } finally {
+      savingRef.current = false
+    }
+  }
+
+  return (
+    <div className="flex justify-between py-1.5 border-b border-muted/5 gap-4">
+      <span className="text-xs shrink-0 w-40 text-muted">Пол руководителя</span>
+      <select
+        value={value || ''}
+        onChange={handleChange}
+        className="w-full max-w-[280px] px-2 py-0.5 bg-bg border border-muted/20 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+      >
+        <option value="">— автоопределение —</option>
+        <option value="male">Мужской</option>
+        <option value="female">Женский</option>
+      </select>
+    </div>
+  )
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="px-4 py-3 border-b border-muted/10">
@@ -543,6 +581,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
         {/* Director */}
           <Section title="Руководство / ЛПР">
             <Field label="Руководитель" value={company.director} field="director" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} highlight={true} />
+            <GenderField value={company.director_gender} companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Должность" value={company.director_title} field="director_title" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Контактное лицо" value={company.contact_person} field="contact_person" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
             <Field label="Контакты компании" value={company.contact_person_full} field="contact_person_full" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
