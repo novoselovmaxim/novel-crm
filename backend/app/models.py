@@ -58,6 +58,7 @@ class Company(Base):
     website = Column(String, nullable=True)
     linkedin = Column(String, nullable=True)
     director = Column(String, nullable=True)
+    director_gender = Column(String, nullable=True)
     director_title = Column(String, nullable=True)
     director_inn = Column(String, nullable=True)
     fin_director = Column(String, nullable=True)

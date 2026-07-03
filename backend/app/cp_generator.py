@@ -187,7 +187,7 @@ def _add_orange_line(pPr):
     pPr.append(pBdr)
 
 
-def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
+def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_display_name="", greeting="Уважаемый"):
     doc = Document()
 
     # Page setup
@@ -284,8 +284,8 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
 
     # P2: Salutation
     _add_paragraph(content_cell, [
-        {'text': 'Уважаемый ', 'size': 24, 'color': D, 'bold': False},
-        {'text': f'{lpr_firstname}!', 'size': 24, 'color': O, 'bold': True},
+        {'text': f'{greeting} ', 'size': 24, 'color': D, 'bold': False},
+        {'text': f'{lpr_display_name}!', 'size': 24, 'color': O, 'bold': True},
     ], spacing_before=40, spacing_after=40, line=248)
 
     # P3: Empty (after=120)
@@ -480,7 +480,7 @@ def _img_to_data_uri(path):
     return f"data:{mime};base64,{base64.b64encode(data).decode()}"
 
 
-def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_firstname=""):
+def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_name="", greeting="Уважаемый"):
     """Generate CP as an HTML string suitable for email body."""
     intpay_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "intpay_logo.jpg"))
     novel_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo_novel.png"))
@@ -568,7 +568,7 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_firstname="
       </div>
 
       <p style="font-size:16px;color:{D};margin:8px 0">
-        Уважаемый <strong style="color:{O}">{lpr_firstname}!</strong>
+        {greeting} <strong style="color:{O}">{lpr_display_name}!</strong>
       </p>
 
       <p style="font-size:16px;color:{D};line-height:1.5;margin:12px 0">

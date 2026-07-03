@@ -17,6 +17,7 @@ export interface Company {
   website: string | null
   linkedin?: string | null
   director?: string | null
+  director_gender?: string | null
   director_title?: string | null
   director_inn?: string | null
   fin_director?: string | null

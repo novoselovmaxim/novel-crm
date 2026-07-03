@@ -55,6 +55,7 @@ class CompanyBase(BaseModel):
     website: Optional[str] = None
     linkedin: Optional[str] = None
     director: Optional[str] = None
+    director_gender: Optional[str] = None
     director_title: Optional[str] = None
     director_inn: Optional[str] = None
     fin_director: Optional[str] = None
@@ -112,6 +113,7 @@ class CompanyUpdate(BaseModel):
     website: Optional[str] = None
     linkedin: Optional[str] = None
     director: Optional[str] = None
+    director_gender: Optional[str] = None
     director_title: Optional[str] = None
     director_inn: Optional[str] = None
     fin_director: Optional[str] = None

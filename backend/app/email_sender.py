@@ -11,7 +11,7 @@ from .database import settings
 logger = logging.getLogger(__name__)
 
 
-def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> None:
+def send_cp_email(recipient_email: str, html_body: str, company_name: str, greeting: str = "Уважаемый", lpr_display_name: str = "клиент") -> None:
     """Send CP HTML as email body via SMTP."""
     msg = MIMEMultipart("alternative")
     msg["From"] = Header("ИНТПЭЙ", "utf-8").encode() + " <info@intpaypro.ru>"
@@ -26,7 +26,7 @@ def send_cp_email(recipient_email: str, html_body: str, company_name: str) -> No
 
 Компания: {company_name}
 
-Уважаемый клиент!
+{greeting} {lpr_display_name}!
 
 Мы — ИНТПЭЙ, платёжное подразделение международного холдинга NOVEL GROUP.
 Партнёрство с Арабским валютным фондом (AMF) гарантирует полную юридическую чистоту каждого перевода.
