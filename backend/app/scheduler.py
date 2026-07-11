@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.database import async_session
 from app.models import User, Company, CallLog, Meeting, FollowUp
 from app.notifications import notifier
+from app.bounce_handler import poll_bounces
 
 logger = logging.getLogger(__name__)
 
@@ -205,5 +206,6 @@ def create_scheduler():
     scheduler.add_job(meeting_reminders, "interval", minutes=15, id="meeting_reminders")
     scheduler.add_job(stale_check, "cron", hour=10, minute=0, id="stale_check")
     scheduler.add_job(send_follow_ups, "interval", minutes=15, id="send_follow_ups")
+    scheduler.add_job(poll_bounces, "interval", minutes=5, id="poll_bounces")
 
     return scheduler
