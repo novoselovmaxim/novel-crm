@@ -44,6 +44,9 @@ $SSH_CMD "cd $VPS_DIR && docker compose up -d 2>&1 | tail -3"
 echo "⏳ Waiting for startup..."
 sleep 5
 
+echo "🗄️ Running database migrations..."
+$SSH_CMD "docker exec novel_crm_backend python3 /app/migrate_pipeline.py 2>&1 || true"
+
 echo "✅ Testing deployment..."
 $SSH_CMD "
 echo '--- Frontend ---'
