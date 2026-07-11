@@ -196,6 +196,54 @@ class PipelineLog(Base):
     changed_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class EmailCommunication(Base):
+    __tablename__ = "email_communications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    sender_email = Column(String, nullable=False)
+    recipient_email = Column(String, nullable=False)
+    subject = Column(Text, nullable=False)
+    body_html = Column(Text, nullable=True)
+    body_text = Column(Text, nullable=True)
+    status = Column(String, default="sent")
+    message_id = Column(String, nullable=True, index=True)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now())
+    opened_at = Column(DateTime(timezone=True), nullable=True)
+    clicked_at = Column(DateTime(timezone=True), nullable=True)
+    bounce_reason = Column(Text, nullable=True)
+
+
+class EmailEvent(Base):
+    __tablename__ = "email_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    communication_id = Column(UUID(as_uuid=True), ForeignKey("email_communications.id"), nullable=False, index=True)
+    event_type = Column(String, nullable=False)
+    link_url = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class FollowUp(Base):
+    __tablename__ = "follow_ups"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    recipient_email = Column(String, nullable=False)
+    trigger_type = Column(String, default="manual")
+    status = Column(String, default="pending")
+    subject = Column(Text, nullable=False)
+    body_html = Column(Text, nullable=True)
+    body_text = Column(Text, nullable=True)
+    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

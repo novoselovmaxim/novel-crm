@@ -1,5 +1,4 @@
-"""Send CP via SMTP email."""
-
+"""Send emails via SMTP."""
 import logging
 import smtplib
 from email.mime.text import MIMEText
@@ -11,17 +10,51 @@ from .database import settings
 logger = logging.getLogger(__name__)
 
 
-def send_cp_email(recipient_email: str, html_body: str, company_name: str, greeting: str = "Уважаемый", lpr_display_name: str = "клиент") -> None:
-    """Send CP HTML as email body via SMTP."""
+def _send_via_smtp(
+    recipient_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str | None = None,
+    sender_name: str = "ИНТПЭЙ",
+    sender_email: str = "info@intpaypro.ru",
+):
     msg = MIMEMultipart("alternative")
-    msg["From"] = Header("ИНТПЭЙ", "utf-8").encode() + " <info@intpaypro.ru>"
+    msg["From"] = Header(sender_name, "utf-8").encode() + f" <{sender_email}>"
     msg["To"] = recipient_email
-    msg["Subject"] = "КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ"
-    msg["Reply-To"] = "info@intpaypro.ru"
+    msg["Subject"] = subject
+    msg["Reply-To"] = sender_email
     msg["X-Mailer"] = "Novel CRM"
     msg["Precedence"] = "bulk"
-    msg["List-Unsubscribe"] = "<mailto:info@intpaypro.ru?subject=unsubscribe>"
+    msg["List-Unsubscribe"] = f"<mailto:{sender_email}?subject=unsubscribe>"
 
+    if text_body:
+        msg.attach(MIMEText(text_body, "plain"))
+    if html_body:
+        msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+        server.set_debuglevel(1)
+        server.starttls()
+        server.login(settings.smtp_user, settings.smtp_password)
+        server.send_message(msg)
+    logger.info(f"Email sent to {recipient_email}: {subject}")
+
+
+def send_email(
+    recipient_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str | None = None,
+) -> None:
+    _send_via_smtp(
+        recipient_email=recipient_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )
+
+
+def send_cp_email(recipient_email: str, html_body: str, company_name: str, greeting: str = "Уважаемый", lpr_display_name: str = "клиент") -> None:
     text = f"""Коммерческое предложение — валютные платежи от ИНТПЭЙ / ГК НОВЕЛЬ
 
 Компания: {company_name}
@@ -56,12 +89,9 @@ E-mail: info@intpaypro.ru
 Telegram: @in_veritate (https://t.me/in_veritate)
 
 Отправлено ИНТПЭЙ / ГК НОВЕЛЬ"""
-    msg.attach(MIMEText(text, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
-        server.set_debuglevel(1)
-        server.starttls()
-        server.login(settings.smtp_user, settings.smtp_password)
-        server.send_message(msg)
-        logger.info(f"Email sent to {recipient_email}")
+    _send_via_smtp(
+        recipient_email=recipient_email,
+        subject="КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ",
+        html_body=html_body,
+        text_body=text,
+    )

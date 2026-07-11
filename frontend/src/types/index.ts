@@ -122,3 +122,41 @@ export interface Comment {
   text: string
   created_at: string
 }
+
+export interface EmailCommunication {
+  id: string
+  company_id: string
+  user_id: string
+  sender_email: string
+  recipient_email: string
+  subject: string
+  status: string
+  message_id: string | null
+  sent_at: string
+  opened_at: string | null
+  clicked_at: string | null
+  bounce_reason: string | null
+}
+
+export interface EmailEvent {
+  id: string
+  communication_id: string
+  event_type: string
+  link_url: string | null
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
+}
+
+export interface FollowUp {
+  id: string
+  company_id: string
+  user_id: string
+  recipient_email: string
+  trigger_type: string
+  status: string
+  subject: string
+  scheduled_at: string | null
+  sent_at: string | null
+  created_at: string
+}
