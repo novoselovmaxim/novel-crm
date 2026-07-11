@@ -648,6 +648,9 @@ async def send_company_cp(
         logger.exception(f"CP HTML generation failed for company {company_id}")
         raise HTTPException(status_code=500, detail="Ошибка генерации КП")
 
+    hostname = settings.base_url.replace("https://", "").replace("http://", "").split("/")[0]
+    message_id = f"<{uuid.uuid4()}@{hostname}>"
+
     comm = EmailCommunication(
         company_id=company_id,
         user_id=current_user.id,
@@ -655,6 +658,7 @@ async def send_company_cp(
         recipient_email=company.lpr_email,
         subject="КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ",
         body_html=html,
+        message_id=message_id,
     )
     db.add(comm)
     await db.commit()
@@ -669,6 +673,7 @@ async def send_company_cp(
             company_name=company.name or "",
             greeting=greeting,
             lpr_display_name=lpr_display_name,
+            message_id=message_id,
         )
 
     try:

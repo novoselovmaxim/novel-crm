@@ -17,6 +17,7 @@ def _send_via_smtp(
     text_body: str | None = None,
     sender_name: str = "ИНТПЭЙ",
     sender_email: str = "info@intpaypro.ru",
+    message_id: str | None = None,
 ):
     msg = MIMEMultipart("alternative")
     msg["From"] = Header(sender_name, "utf-8").encode() + f" <{sender_email}>"
@@ -26,6 +27,8 @@ def _send_via_smtp(
     msg["X-Mailer"] = "Novel CRM"
     msg["Precedence"] = "bulk"
     msg["List-Unsubscribe"] = f"<mailto:{sender_email}?subject=unsubscribe>"
+    if message_id:
+        msg["Message-ID"] = message_id
 
     if text_body:
         msg.attach(MIMEText(text_body, "plain"))
@@ -54,7 +57,14 @@ def send_email(
     )
 
 
-def send_cp_email(recipient_email: str, html_body: str, company_name: str, greeting: str = "Уважаемый", lpr_display_name: str = "клиент") -> None:
+def send_cp_email(
+    recipient_email: str,
+    html_body: str,
+    company_name: str,
+    greeting: str = "Уважаемый",
+    lpr_display_name: str = "клиент",
+    message_id: str | None = None,
+) -> None:
     text = f"""Коммерческое предложение — валютные платежи от ИНТПЭЙ / ГК НОВЕЛЬ
 
 Компания: {company_name}
@@ -94,4 +104,5 @@ Telegram: @in_veritate (https://t.me/in_veritate)
         subject="КП — о валютных платежах — ИНТПЭЙ — ГК НОВЕЛЬ",
         html_body=html_body,
         text_body=text,
+        message_id=message_id,
     )
