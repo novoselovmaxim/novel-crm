@@ -4,6 +4,7 @@ import { Company, User, Comment, CallLog } from '../types'
 import { useAuth } from '../store/auth'
 import CalendarPicker from './CalendarPicker'
 import CalendarModal from './CalendarModal'
+import StatusBadge from './StatusBadge'
 import { getClientTimeInfo } from '../utils/timezone'
 
 const STATUSES = [
@@ -372,6 +373,13 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
         {company.region && <TimeZoneBlock region={company.region} />}
         {company.activity_main && <p className="text-sm text-muted mb-2 line-clamp-2">{company.activity_main}</p>}
 
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          <StatusBadge status={company.pipeline_stage} kind="pipeline" />
+          {company.tg_status && company.tg_status !== 'none' && (
+            <StatusBadge status={company.tg_status} kind="tg" />
+          )}
+        </div>
+
         {phones.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {phones.map((p, i) => (
@@ -591,7 +599,49 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
             <Field label="Email ЛПР" value={company.lpr_email} field="lpr_email" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} highlight={true} />
           </Section>
 
-        {/* CP Actions */}
+        {/* Telegram */}
+        <Section title="Telegram / Мессенджер">
+          <Field label="TG-контакт" value={company.tg_contact} field="tg_contact" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+          <div className="flex justify-between py-1.5 border-b border-muted/5 gap-4">
+            <span className="text-xs shrink-0 w-40 text-muted">TG-статус</span>
+            <select
+              value={company.tg_status}
+              onChange={async (e) => {
+                const val = e.target.value
+                try {
+                  await api.patch(`/companies/${company.id}`, { tg_status: val })
+                  setCompany(prev => ({ ...prev, tg_status: val }))
+                } catch {}
+              }}
+              className="w-full max-w-[280px] px-2 py-0.5 bg-bg border border-muted/20 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+            >
+              <option value="none">Нет TG</option>
+              <option value="contacted">Связались</option>
+              <option value="responded">Ответил</option>
+              <option value="no_response">Не ответил</option>
+            </select>
+          </div>
+          <div className="flex justify-between py-1.5 border-b border-muted/5 gap-4">
+            <span className="text-xs shrink-0 w-40 text-muted">Мессенджер</span>
+            <select
+              value={company.messenger || ''}
+              onChange={async (e) => {
+                const val = e.target.value || null
+                try {
+                  await api.patch(`/companies/${company.id}`, { messenger: val })
+                  setCompany(prev => ({ ...prev, messenger: val }))
+                } catch {}
+              }}
+              className="w-full max-w-[280px] px-2 py-0.5 bg-bg border border-muted/20 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+            >
+              <option value="">—</option>
+              <option value="telegram">Telegram</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
+          </div>
+        </Section>
+
+          {/* CP Actions */}
         <Section title="Коммерческое предложение">
           <div className="flex flex-col gap-2">
             <button

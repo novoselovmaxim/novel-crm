@@ -51,6 +51,10 @@ export interface Company {
   branches?: string | null
   comment_static: string | null
   call_status: string
+  pipeline_stage: string
+  tg_contact: string | null
+  tg_status: string
+  messenger: string | null
   call_count: number
   next_call_date: string | null
   assigned_to: string | null
@@ -80,6 +84,25 @@ export interface DashboardStats {
   calls_today: number
   tasks_today: number
   overdue: number
+  archived: number
+  unprocessed: number
+  pipeline_counts?: Record<string, number>
+}
+
+export interface PipelineStage {
+  key: string
+  label: string
+}
+
+export interface PipelineGroup {
+  stage: string
+  count: number
+  companies: Company[]
+}
+
+export interface PipelineBoard {
+  groups: PipelineGroup[]
+  total: number
 }
 
 export interface CallLog {

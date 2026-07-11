@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import date
 
+from collections import Counter
+
 from ..database import get_db
 from ..models import User, Company, CallLog
 from ..schemas import DashboardMetrics
@@ -36,6 +38,8 @@ async def my_dashboard(
     
     total_all = sum(1 for c in companies if c.call_status != "refused")
     
+    pipeline_counts = dict(Counter(c.pipeline_stage for c in companies if c.pipeline_stage))
+    
     return DashboardMetrics(
         total_companies=total_all,
         new_companies=sum(1 for c in companies if c.call_status == "new"),
@@ -48,4 +52,5 @@ async def my_dashboard(
         overdue=overdue,
         archived=sum(1 for c in companies if c.call_status == "refused"),
         unprocessed=sum(1 for c in companies if c.call_count == 0 and c.call_status != "refused"),
+        pipeline_counts=pipeline_counts,
     )

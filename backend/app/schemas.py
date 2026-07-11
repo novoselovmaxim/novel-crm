@@ -89,6 +89,10 @@ class CompanyBase(BaseModel):
     branches: Optional[str] = None
     comment_static: Optional[str] = None
     call_status: Optional[str] = "new"
+    pipeline_stage: Optional[str] = "new"
+    tg_contact: Optional[str] = None
+    tg_status: Optional[str] = "none"
+    messenger: Optional[str] = None
     next_call_date: Optional[date] = None
     assigned_to: Optional[uuid.UUID] = None
 
@@ -147,6 +151,10 @@ class CompanyUpdate(BaseModel):
     branches: Optional[str] = None
     comment_static: Optional[str] = None
     call_status: Optional[str] = None
+    pipeline_stage: Optional[str] = None
+    tg_contact: Optional[str] = None
+    tg_status: Optional[str] = None
+    messenger: Optional[str] = None
     next_call_date: Optional[date] = None
     assigned_to: Optional[uuid.UUID] = None
 
@@ -200,6 +208,24 @@ class DashboardMetrics(BaseModel):
     overdue: int
     archived: int
     unprocessed: int
+    pipeline_counts: Optional[dict[str, int]] = None
+
+
+class PipelineLogResponse(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    user_id: uuid.UUID
+    from_stage: Optional[str]
+    to_stage: str
+    changed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PipelineStageUpdate(BaseModel):
+    stage: str
+
 
 class CommentCreate(BaseModel):
     text: str

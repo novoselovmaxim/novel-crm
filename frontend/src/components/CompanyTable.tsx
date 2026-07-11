@@ -269,7 +269,7 @@ function saveTableState(state: Record<string, unknown>) {
   } catch {}
 }
 
-export default function CompanyTable() {
+export default function CompanyTable({ pipelineFilter }: { pipelineFilter?: string | null }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState(() => loadSavedState('searchInput', ''))
@@ -333,6 +333,10 @@ export default function CompanyTable() {
   }
 
   useEffect(() => {
+    setPage(1)
+  }, [pipelineFilter])
+
+  useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput), 400)
     return () => clearTimeout(timer)
   }, [searchInput])
@@ -361,7 +365,7 @@ export default function CompanyTable() {
     const fetchCompanies = async () => {
       setLoading(true)
       try {
-        const params: Record<string, any> = { page, page_size: pageSize, search, status: statusFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined, org_form: orgFormFilter || undefined, activity: activityFilter || undefined }
+        const params: Record<string, any> = { page, page_size: pageSize, search, status: statusFilter || undefined, pipeline_stage: pipelineFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined, org_form: orgFormFilter || undefined, activity: activityFilter || undefined }
         if (sortBy) { params.sort_by = sortBy; params.sort_order = sortOrder }
         const { data } = await api.get('/companies', { params })
         setCompanies(data.items)
@@ -374,7 +378,7 @@ export default function CompanyTable() {
       }
     }
     fetchCompanies()
-  }, [page, pageSize, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, refreshKey])
+  }, [page, pageSize, search, statusFilter, pipelineFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, refreshKey])
 
   useEffect(() => {
     const timer = setTimeout(() => {
