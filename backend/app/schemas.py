@@ -241,6 +241,79 @@ class CommentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class EmailCommunicationResponse(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    user_id: uuid.UUID
+    sender_email: str
+    recipient_email: str
+    subject: str
+    status: str
+    message_id: Optional[str] = None
+    sent_at: datetime
+    opened_at: Optional[datetime] = None
+    clicked_at: Optional[datetime] = None
+    bounce_reason: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class EmailSendRequest(BaseModel):
+    company_id: uuid.UUID
+    recipient_email: str
+    subject: str
+    body_html: str
+    body_text: Optional[str] = None
+
+
+class EmailEventResponse(BaseModel):
+    id: uuid.UUID
+    communication_id: uuid.UUID
+    event_type: str
+    link_url: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FollowUpCreate(BaseModel):
+    company_id: uuid.UUID
+    recipient_email: str
+    trigger_type: str = "manual"
+    subject: str
+    body_html: str
+    body_text: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+
+
+class FollowUpUpdate(BaseModel):
+    status: Optional[str] = None
+    subject: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+
+
+class FollowUpResponse(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    user_id: uuid.UUID
+    recipient_email: str
+    trigger_type: str
+    status: str
+    subject: str
+    scheduled_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class AssignRequest(BaseModel):
     user_id: Optional[uuid.UUID] = None
 

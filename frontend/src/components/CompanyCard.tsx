@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/client'
-import { Company, User, Comment, CallLog } from '../types'
+import { Company, User, Comment, CallLog, EmailCommunication, FollowUp } from '../types'
 import { useAuth } from '../store/auth'
 import CalendarPicker from './CalendarPicker'
 import CalendarModal from './CalendarModal'
@@ -225,6 +225,8 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [commentText, setCommentText] = useState('')
   const [sendingComment, setSendingComment] = useState(false)
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
+  const [emailHistory, setEmailHistory] = useState<EmailCommunication[]>([])
+  const [followUps, setFollowUps] = useState<FollowUp[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -246,6 +248,14 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
 
   useEffect(() => {
     api.get(`/companies/${company.id}/calls`).then(({ data }) => setCallLogs(data)).catch(() => setCallLogs([]))
+  }, [company.id, refreshKey])
+
+  useEffect(() => {
+    api.get(`/communications/${company.id}`).then(({ data }) => setEmailHistory(data)).catch(() => setEmailHistory([]))
+  }, [company.id, refreshKey])
+
+  useEffect(() => {
+    api.get(`/follow-ups/${company.id}`).then(({ data }) => setFollowUps(data)).catch(() => setFollowUps([]))
   }, [company.id, refreshKey])
 
   const sendComment = async () => {
@@ -698,6 +708,46 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           {cpError && (
             <div className="mt-2 px-3 py-2 bg-error/10 rounded text-xs text-error border border-error/20">
               {cpError}
+            </div>
+          )}
+        </Section>
+
+        {/* Email */}
+        <Section title="Email-история">
+          {emailHistory.length === 0 ? (
+            <p className="text-xs text-muted">Нет отправленных писем</p>
+          ) : (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {emailHistory.map(e => (
+                <div key={e.id} className="text-xs border-l-2 pl-2 py-0.5"
+                  style={{ borderColor: e.opened_at ? '#22c55e' : e.status === 'failed' ? '#ef4444' : '#666' }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-text font-medium truncate">{e.subject}</span>
+                    <span className="ml-auto shrink-0 text-muted">{e.opened_at ? '👁' : e.status === 'failed' ? '✕' : '✓'}</span>
+                  </div>
+                  <div className="text-muted">
+                    {new Date(e.sent_at).toLocaleDateString('ru-RU')} → {e.recipient_email}
+                    {e.opened_at && <> · открыто {new Date(e.opened_at).toLocaleDateString('ru-RU')}</>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {followUps.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-muted/10">
+              <p className="text-[10px] font-semibold text-muted mb-1">Follow-up:</p>
+              {followUps.map(f => (
+                <div key={f.id} className="text-xs flex items-center gap-1.5 py-0.5">
+                  <span className={f.status === 'sent' ? 'text-success' : f.status === 'cancelled' ? 'text-muted' : 'text-yellow-400'}>
+                    {f.status === 'sent' ? '✓' : f.status === 'cancelled' ? '—' : '○'}
+                  </span>
+                  <span className="truncate">{f.subject}</span>
+                  <span className="text-muted shrink-0">
+                    {f.scheduled_at ? new Date(f.scheduled_at).toLocaleDateString('ru-RU') : 'без даты'}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </Section>

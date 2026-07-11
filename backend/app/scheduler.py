@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.database import async_session
-from app.models import User, Company, CallLog, Meeting
+from app.models import User, Company, CallLog, Meeting, FollowUp
 from app.notifications import notifier
 
 logger = logging.getLogger(__name__)
@@ -169,6 +169,34 @@ async def stale_check():
                     f"Напоминание: компания {company.name} в статусе «Заинтересован» уже 3+ дня без активности."
                 )
 
+async def send_follow_ups():
+    now = datetime.now(timezone.utc)
+    async with async_session() as db:
+        pending = await db.execute(
+            select(FollowUp).where(
+                FollowUp.status == "pending",
+                FollowUp.scheduled_at <= now,
+            )
+        )
+        for fup in pending.scalars().all():
+            try:
+                from app.email_sender import _send_via_smtp
+                _send_via_smtp(
+                    recipient_email=fup.recipient_email,
+                    subject=fup.subject,
+                    html_body=fup.body_html or "",
+                    text_body=fup.body_text,
+                )
+                fup.status = "sent"
+                fup.sent_at = now
+                await db.commit()
+                logger.info(f"Follow-up {fup.id} sent to {fup.recipient_email}")
+            except Exception:
+                logger.exception(f"Failed to send follow-up {fup.id}")
+                fup.status = "failed"
+                await db.commit()
+
+
 def create_scheduler():
     scheduler = AsyncIOScheduler(timezone=MSK)
 
@@ -176,5 +204,6 @@ def create_scheduler():
     scheduler.add_job(evening_summary, "cron", hour=18, minute=0, id="evening_summary")
     scheduler.add_job(meeting_reminders, "interval", minutes=15, id="meeting_reminders")
     scheduler.add_job(stale_check, "cron", hour=10, minute=0, id="stale_check")
+    scheduler.add_job(send_follow_ups, "interval", minutes=15, id="send_follow_ups")
 
     return scheduler
