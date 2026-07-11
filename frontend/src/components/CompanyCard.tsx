@@ -227,6 +227,13 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [emailHistory, setEmailHistory] = useState<EmailCommunication[]>([])
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
+  const [showEmailForm, setShowEmailForm] = useState(false)
+  const [emailTo, setEmailTo] = useState(company.lpr_email || company.email || '')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailError, setEmailError] = useState('')
+  const [emailSent, setEmailSent] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -712,7 +719,81 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           )}
         </Section>
 
-        {/* Email */}
+        {/* Send Email */}
+        <Section title="Email">
+          {showEmailForm ? (
+            <div className="space-y-2">
+              <input
+                value={emailTo}
+                onChange={e => setEmailTo(e.target.value)}
+                className="w-full px-2 py-1.5 bg-bg border border-muted/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder="Кому (email)"
+              />
+              <input
+                value={emailSubject}
+                onChange={e => setEmailSubject(e.target.value)}
+                className="w-full px-2 py-1.5 bg-bg border border-muted/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder="Тема письма"
+              />
+              <textarea
+                value={emailBody}
+                onChange={e => setEmailBody(e.target.value)}
+                rows={5}
+                className="w-full px-3 py-2 bg-bg border border-muted/20 rounded-lg resize-none text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                placeholder="Текст письма..."
+              />
+              {emailError && <p className="text-xs text-error">{emailError}</p>}
+              {emailSent && <p className="text-xs text-success">✓ Письмо отправлено</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (!emailTo.trim() || !emailSubject.trim() || !emailBody.trim() || sendingEmail) return
+                    setSendingEmail(true)
+                    setEmailError('')
+                    try {
+                      const html = `<html><body style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">${emailBody.replace(/\n/g, '<br>')}</body></html>`
+                      await api.post('/communications/send', {
+                        company_id: company.id,
+                        recipient_email: emailTo.trim(),
+                        subject: emailSubject.trim(),
+                        body_html: html,
+                        body_text: emailBody.trim(),
+                      })
+                      setEmailSent(true)
+                      setEmailSubject('')
+                      setEmailBody('')
+                      api.get(`/communications/${company.id}`).then(({ data }) => setEmailHistory(data)).catch(() => {})
+                      setTimeout(() => setEmailSent(false), 3000)
+                    } catch (e: any) {
+                      setEmailError(e?.response?.data?.detail || 'Ошибка отправки')
+                    } finally {
+                      setSendingEmail(false)
+                    }
+                  }}
+                  disabled={!emailTo.trim() || !emailSubject.trim() || !emailBody.trim() || sendingEmail}
+                  className="flex-1 py-2 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {sendingEmail ? 'Отправка...' : 'Отправить'}
+                </button>
+                <button
+                  onClick={() => { setShowEmailForm(false); setEmailError(''); setEmailSent(false) }}
+                  className="px-3 py-2 bg-bg border border-muted/20 rounded-lg text-sm text-muted hover:text-text"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setEmailTo(company.lpr_email || company.email || ''); setShowEmailForm(true); setEmailSent(false); setEmailError('') }}
+              className="w-full py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              ✉️ Написать письмо
+            </button>
+          )}
+        </Section>
+
+        {/* Email history */}
         <Section title="Email-история">
           {emailHistory.length === 0 ? (
             <p className="text-xs text-muted">Нет отправленных писем</p>
