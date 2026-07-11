@@ -234,6 +234,14 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [sendingEmail, setSendingEmail] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [emailSent, setEmailSent] = useState(false)
+  const [showFupForm, setShowFupForm] = useState(false)
+  const [fupTo, setFupTo] = useState(company.lpr_email || company.email || '')
+  const [fupSubject, setFupSubject] = useState('')
+  const [fupBody, setFupBody] = useState('')
+  const [fupDate, setFupDate] = useState('')
+  const [sendingFup, setSendingFup] = useState(false)
+  const [fupError, setFupError] = useState('')
+  const [fupSent, setFupSent] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -789,6 +797,90 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
               className="w-full py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-colors"
             >
               ✉️ Написать письмо
+            </button>
+          )}
+        </Section>
+
+        {/* Follow-up */}
+        <Section title="Follow-up">
+          {showFupForm ? (
+            <div className="space-y-2">
+              <input
+                value={fupTo}
+                onChange={e => setFupTo(e.target.value)}
+                className="w-full px-2 py-1.5 bg-bg border border-muted/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder="Кому (email)"
+              />
+              <input
+                value={fupSubject}
+                onChange={e => setFupSubject(e.target.value)}
+                className="w-full px-2 py-1.5 bg-bg border border-muted/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder="Тема письма"
+              />
+              <textarea
+                value={fupBody}
+                onChange={e => setFupBody(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 bg-bg border border-muted/20 rounded-lg resize-none text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                placeholder="Текст письма..."
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={fupDate}
+                  onChange={e => setFupDate(e.target.value)}
+                  className="flex-1 px-2 py-1.5 bg-bg border border-muted/20 rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              {fupError && <p className="text-xs text-error">{fupError}</p>}
+              {fupSent && <p className="text-xs text-success">✓ Follow-up создан</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (!fupTo.trim() || !fupSubject.trim() || !fupBody.trim() || sendingFup) return
+                    setSendingFup(true)
+                    setFupError('')
+                    try {
+                      const html = `<html><body style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">${fupBody.replace(/\n/g, '<br>')}</body></html>`
+                      await api.post('/follow-ups', {
+                        company_id: company.id,
+                        recipient_email: fupTo.trim(),
+                        subject: fupSubject.trim(),
+                        body_html: html,
+                        body_text: fupBody.trim(),
+                        scheduled_at: fupDate ? new Date(fupDate + 'T10:00:00').toISOString() : null,
+                      })
+                      setFupSent(true)
+                      setFupSubject('')
+                      setFupBody('')
+                      setFupDate('')
+                      api.get(`/follow-ups/${company.id}`).then(({ data }) => setFollowUps(data)).catch(() => {})
+                      setTimeout(() => setFupSent(false), 3000)
+                    } catch (e: any) {
+                      setFupError(e?.response?.data?.detail || 'Ошибка создания')
+                    } finally {
+                      setSendingFup(false)
+                    }
+                  }}
+                  disabled={!fupTo.trim() || !fupSubject.trim() || !fupBody.trim() || sendingFup}
+                  className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-600/90 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {sendingFup ? 'Создание...' : 'Создать'}
+                </button>
+                <button
+                  onClick={() => { setShowFupForm(false); setFupError(''); setFupSent(false) }}
+                  className="px-3 py-2 bg-bg border border-muted/20 rounded-lg text-sm text-muted hover:text-text"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setFupTo(company.lpr_email || company.email || ''); setShowFupForm(true); setFupSent(false); setFupError('') }}
+              className="w-full py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-500 text-sm font-medium rounded-lg transition-colors border border-yellow-600/30"
+            >
+              ⏰ Создать follow-up
             </button>
           )}
         </Section>
