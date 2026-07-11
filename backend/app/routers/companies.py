@@ -61,6 +61,7 @@ async def list_companies(
     search: Optional[str] = None,
     region: Optional[str] = None,
     status: Optional[str] = None,
+    pipeline_stage: Optional[str] = Query(None, description="Filter by pipeline stage"),
     assigned_to: Optional[str] = None,
     archived: bool = Query(False, description="Show archived (refused) companies only"),
     source: Optional[str] = Query(None, description="Filter by import source id"),
@@ -102,6 +103,10 @@ async def list_companies(
     if status:
         query = query.where(Company.call_status == status)
         count_query = count_query.where(Company.call_status == status)
+    
+    if pipeline_stage:
+        query = query.where(Company.pipeline_stage == pipeline_stage)
+        count_query = count_query.where(Company.pipeline_stage == pipeline_stage)
     
     if assigned_to:
         query = query.where(Company.assigned_to == assigned_to)

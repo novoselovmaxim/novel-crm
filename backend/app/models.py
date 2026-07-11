@@ -92,6 +92,10 @@ class Company(Base):
     branches = Column(String, nullable=True)
     comment_static = Column(Text, nullable=True)
     call_status = Column(String, default="new", index=True)
+    pipeline_stage = Column(String, default="new", index=True)
+    tg_contact = Column(String, nullable=True)
+    tg_status = Column(String, default="none")
+    messenger = Column(String, nullable=True)
     next_call_date = Column(Date, nullable=True, index=True)
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     call_count = Column(Integer, default=0)
@@ -179,6 +183,17 @@ class CompanyComment(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PipelineLog(Base):
+    __tablename__ = "pipeline_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    from_stage = Column(String, nullable=True)
+    to_stage = Column(String, nullable=False)
+    changed_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 async def create_tables():
