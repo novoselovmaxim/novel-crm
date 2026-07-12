@@ -234,6 +234,9 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [sendingEmail, setSendingEmail] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [emailSent, setEmailSent] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiResult, setAiResult] = useState<any>(null)
+  const [aiError, setAiError] = useState('')
   const [showFupForm, setShowFupForm] = useState(false)
   const [fupTo, setFupTo] = useState(company.lpr_email || company.email || '')
   const [fupSubject, setFupSubject] = useState('')
@@ -426,7 +429,38 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
               Email
             </a>
           ))}
+          <button
+            onClick={async () => {
+              setAiLoading(true)
+              setAiError('')
+              setAiResult(null)
+              try {
+                const { data } = await api.post(`/ai/search/${company.id}`)
+                setAiResult(data.found_fields)
+              } catch (e: any) {
+                setAiError(e?.response?.data?.detail || 'Ошибка AI поиска')
+              } finally {
+                setAiLoading(false)
+              }
+            }}
+            disabled={aiLoading}
+            className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 disabled:opacity-50 text-indigo-400 text-xs rounded-md border border-indigo-600/30"
+          >
+            {aiLoading ? 'Поиск...' : 'AI'}
+          </button>
         </div>
+        {aiResult?.description && (
+          <div className="mt-2 p-2 bg-indigo-600/5 border border-indigo-600/20 rounded text-xs text-text leading-relaxed">
+            <span className="font-semibold text-indigo-400">AI:</span> {aiResult.description.slice(0, 300)}
+            {aiResult.description.length > 300 && '...'}
+            {aiResult.sources?.length > 0 && (
+              <div className="mt-1 text-[10px] text-muted">
+                Источники: {aiResult.sources.slice(0, 3).map((s: any) => s.title).join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+        {aiError && <p className="text-xs text-error mt-1">{aiError}</p>}
         {company.address && <p className="text-xs text-muted mt-2 line-clamp-2">{company.address}</p>}
         {isAdminOrLead && (
           <div className="mt-2 flex items-center gap-2">

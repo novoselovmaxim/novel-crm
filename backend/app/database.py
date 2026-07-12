@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     base_url: str = "https://novel.maxnov.ru"
+    tavily_api_key: str = ""
 
     @property
     def db_url(self) -> str:
