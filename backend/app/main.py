@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .database import get_db
 from .models import create_tables
-from .routers import auth, companies, dashboard, telegram, import_routes, availability, pipeline, tracking, communications, follow_ups
+from .routers import auth, companies, dashboard, telegram, import_routes, availability, pipeline, tracking, communications, follow_ups, ai_search
 from .notifications import notifier
 from .telegram_webhook import router as telegram_webhook_router, start_polling, stop_polling
 from .scheduler import create_scheduler
@@ -33,6 +33,7 @@ app.include_router(pipeline.router)
 app.include_router(tracking.router)
 app.include_router(communications.router)
 app.include_router(follow_ups.router)
+app.include_router(ai_search.router)
 
 @app.get("/api/health")
 async def health():

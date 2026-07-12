@@ -12,9 +12,11 @@ from ..auth import get_current_user
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 PIPELINE_STAGES = [
-    "new", "message_sent", "diagnosis_done", "test_offered",
+    "new", "in_progress", "message_sent", "diagnosis_done", "test_offered",
     "test_done", "reserve", "client", "partner"
 ]
+
+HIDDEN_STATUSES = ["refused"]
 
 
 @router.get("")
@@ -24,7 +26,11 @@ async def get_pipeline_board(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    base = select(Company).where(Company.is_deleted == False, Company.pipeline_stage.in_(PIPELINE_STAGES))
+    base = select(Company).where(
+        Company.is_deleted == False,
+        Company.pipeline_stage.in_(PIPELINE_STAGES),
+        ~Company.call_status.in_(HIDDEN_STATUSES),
+    )
 
     if current_user.role == "manager":
         base = base.where(Company.assigned_to == current_user.id)
@@ -99,6 +105,7 @@ async def get_pipeline_log(
 async def list_stages():
     labels = {
         "new": "Новый",
+        "in_progress": "В работе",
         "message_sent": "Сообщение отправлено",
         "diagnosis_done": "Диагностика пройдена",
         "test_offered": "Тест предложен",
