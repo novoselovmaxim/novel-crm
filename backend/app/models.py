@@ -100,6 +100,8 @@ class Company(Base):
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     call_count = Column(Integer, default=0)
     last_called_at = Column(DateTime(timezone=True), nullable=True)
+    ai_suggestions = Column(JSONB, nullable=True)
+    ai_summary = Column(Text, nullable=True)
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
