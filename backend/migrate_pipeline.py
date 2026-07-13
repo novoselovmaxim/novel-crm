@@ -22,6 +22,8 @@ async def migrate():
         await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS tg_contact VARCHAR"))
         await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS tg_status VARCHAR DEFAULT 'none'"))
         await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS messenger VARCHAR"))
+        await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS ai_suggestions JSONB"))
+        await conn.execute(text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS ai_summary TEXT"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_companies_pipeline_stage ON companies(pipeline_stage)"))
 
         print("Migrating call_status → pipeline_stage...")

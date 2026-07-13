@@ -162,12 +162,19 @@ class CompanyResponse(CompanyBase):
     id: uuid.UUID
     call_count: int
     last_called_at: Optional[datetime]
+    ai_suggestions: Optional[dict] = None
+    ai_summary: Optional[str] = None
     is_deleted: bool
     created_at: datetime
     updated_at: datetime
     
     class Config:
         from_attributes = True
+
+
+class AiApplyRequest(BaseModel):
+    field: str
+    value: str
 
 class CompanyListResponse(BaseModel):
     items: list[CompanyResponse]

@@ -436,7 +436,8 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
               setAiResult(null)
               try {
                 const { data } = await api.post(`/ai/search/${company.id}`)
-                setAiResult(data.found_fields)
+                setAiResult(data)
+                setCompany(prev => ({ ...prev, ...data.company }))
               } catch (e: any) {
                 setAiError(e?.response?.data?.detail || 'Ошибка AI поиска')
               } finally {
@@ -449,10 +450,76 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
             {aiLoading ? 'Поиск...' : 'AI'}
           </button>
         </div>
-        {aiResult?.description && (
+
+        {/* AI auto-saved */}
+        {aiResult?.auto_saved?.length > 0 && (
+          <div className="mt-2 p-2 bg-success/5 border border-success/20 rounded text-xs text-text leading-relaxed">
+            <span className="font-semibold text-success">✓ Автосохранено:</span>{' '}
+            {aiResult.auto_saved.join(', ')}
+          </div>
+        )}
+
+        {/* AI pending suggestions with apply/reject */}
+        {aiResult?.suggestions && Object.keys(aiResult.suggestions).length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {Object.entries(aiResult.suggestions).map(([field, val]: any) => (
+              <div key={field} className="p-2 bg-yellow-500/5 border border-yellow-500/20 rounded text-xs">
+                <div className="text-yellow-400 font-semibold mb-1">💡 {val.label}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted line-through">{val.current}</span>
+                  <span className="text-accent">→</span>
+                  <span className="text-text font-medium">{val.suggested}</span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.post(`/ai/apply/${company.id}`, { field, value: val.suggested })
+                        setAiResult((prev: any) => {
+                          if (!prev) return prev
+                          const s = { ...prev.suggestions }
+                          delete s[field]
+                          return { ...prev, suggestions: s }
+                        })
+                        setCompany(prev => ({ ...prev, [field]: val.suggested }))
+                      } catch {}
+                    }}
+                    className="ml-auto px-2 py-0.5 bg-success/20 hover:bg-success/30 text-success text-[10px] rounded"
+                  >Принять</button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.post(`/ai/reject/${company.id}`, { field, value: '' })
+                        setAiResult((prev: any) => {
+                          if (!prev) return prev
+                          const s = { ...prev.suggestions }
+                          delete s[field]
+                          return { ...prev, suggestions: s }
+                        })
+                      } catch {}
+                    }}
+                    className="px-2 py-0.5 bg-error/20 hover:bg-error/30 text-error text-[10px] rounded"
+                  >✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* AI summary with apply */}
+        {aiResult?.ai_summary && !company.ai_summary && (
           <div className="mt-2 p-2 bg-indigo-600/5 border border-indigo-600/20 rounded text-xs text-text leading-relaxed">
-            <span className="font-semibold text-indigo-400">AI:</span> {aiResult.description.slice(0, 300)}
-            {aiResult.description.length > 300 && '...'}
+            <span className="font-semibold text-indigo-400">📝 AI:</span>{' '}
+            {aiResult.ai_summary.slice(0, 500)}
+            {aiResult.ai_summary.length > 500 && '...'}
+            <button
+              onClick={async () => {
+                try {
+                  await api.post(`/ai/apply/${company.id}`, { field: 'ai_summary', value: aiResult.ai_summary })
+                  setCompany(prev => ({ ...prev, ai_summary: aiResult.ai_summary }))
+                  setAiResult((prev: any) => prev ? { ...prev, ai_summary: '' } : prev)
+                } catch {}
+              }}
+              className="mt-1.5 px-2 py-0.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 text-[10px] rounded border border-indigo-600/30"
+            >Сохранить описание в карточку</button>
             {aiResult.sources?.length > 0 && (
               <div className="mt-1 text-[10px] text-muted">
                 Источники: {aiResult.sources.slice(0, 3).map((s: any) => s.title).join(', ')}
@@ -460,6 +527,14 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
             )}
           </div>
         )}
+
+        {/* persisted ai_summary */}
+        {company.ai_summary && !(aiResult?.ai_summary) && (
+          <div className="mt-2 p-2 bg-indigo-600/5 border border-indigo-600/20 rounded text-xs text-text leading-relaxed">
+            <span className="font-semibold text-indigo-400">📝 AI:</span> {company.ai_summary}
+          </div>
+        )}
+
         {aiError && <p className="text-xs text-error mt-1">{aiError}</p>}
         {company.address && <p className="text-xs text-muted mt-2 line-clamp-2">{company.address}</p>}
         {isAdminOrLead && (
