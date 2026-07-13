@@ -109,7 +109,7 @@ async def qualify_company(
         import httpx
         async with httpx.AsyncClient(timeout=60) as c:
             payload = {
-                "model": "gpt-4o-mini",
+                "model": "openai/gpt-4o-mini",
                 "messages": [
                     {"role": "system", "content": QUALIFY_SYSTEM_PROMPT},
                     {
