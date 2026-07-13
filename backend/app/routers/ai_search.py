@@ -120,7 +120,7 @@ async def ai_apply_field(
         del pending[request.field]
         ai_suggestions["pending"] = pending
     else:
-    raise HTTPException(status_code=400, detail=f"No pending suggestion for '{request.field}'")
+        raise HTTPException(status_code=400, detail=f"No pending suggestion for '{request.field}'")
 
 
 @router.post("/qualify/{company_id}")
