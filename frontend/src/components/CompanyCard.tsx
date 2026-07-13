@@ -237,6 +237,8 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [aiLoading, setAiLoading] = useState(false)
   const [aiResult, setAiResult] = useState<any>(null)
   const [aiError, setAiError] = useState('')
+  const [qualLoading, setQualLoading] = useState(false)
+  const [qualResult, setQualResult] = useState<any>(company.ai_suggestions?.qualification || null)
   const [showFupForm, setShowFupForm] = useState(false)
   const [fupTo, setFupTo] = useState(company.lpr_email || company.email || '')
   const [fupSubject, setFupSubject] = useState('')
@@ -449,6 +451,24 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           >
             {aiLoading ? 'Поиск...' : 'AI'}
           </button>
+          <button
+            onClick={async () => {
+              setQualLoading(true)
+              try {
+                const { data } = await api.post(`/ai/qualify/${company.id}`)
+                setQualResult(data.qualification)
+                setCompany(prev => ({ ...prev, ai_suggestions: { ...prev.ai_suggestions, qualification: data.qualification } }))
+              } catch (e: any) {
+                setAiError(e?.response?.data?.detail || 'Ошибка квалификации')
+              } finally {
+                setQualLoading(false)
+              }
+            }}
+            disabled={qualLoading}
+            className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 text-emerald-400 text-xs rounded-md border border-emerald-600/30"
+          >
+            {qualLoading ? 'Анализ...' : '⚡ Квалификация'}
+          </button>
         </div>
 
         {/* AI auto-saved */}
@@ -536,6 +556,65 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
         )}
 
         {aiError && <p className="text-xs text-error mt-1">{aiError}</p>}
+
+        {/* Qualification result */}
+        {qualResult && (() => {
+          const q = qualResult
+          const score = q.score ?? 0
+          const scoreColor = score >= 70 ? 'text-success' : score >= 40 ? 'text-yellow-400' : 'text-error'
+          const scoreBg = score >= 70 ? 'bg-success/10 border-success/20' : score >= 40 ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-error/10 border-error/20'
+          const items: [string, any, string][] = [
+            ['ВЭД деятельность', q.has_ved, 'has_ved'],
+            ['Импортёр', q.is_importer, 'is_importer'],
+            ['Экспортёр', q.is_exporter, 'is_exporter'],
+            ['Валютные платежи', q.has_foreign_payments, 'has_foreign_payments'],
+            ['Международные партнёры', q.has_international_partners, 'has_international_partners'],
+          ]
+          return (
+            <div className={`mt-2 p-2 rounded text-xs border ${scoreBg}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-text">⚡ Квалификация лида</span>
+                <span className={`font-bold ${scoreColor}`}>{score}/100</span>
+              </div>
+
+              {/* Score bar */}
+              <div className="h-1.5 bg-bg rounded-full mb-2 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${score >= 70 ? 'bg-success' : score >= 40 ? 'bg-yellow-400' : 'bg-error'}`}
+                  style={{ width: `${score}%` }}
+                />
+              </div>
+
+              {/* Checklist */}
+              <div className="space-y-0.5 mb-1.5">
+                {items.map(([label, val]) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <span className={val === true ? 'text-success' : val === false ? 'text-error' : 'text-muted'}>
+                      {val === true ? '✓' : val === false ? '✗' : '?'}
+                    </span>
+                    <span className="text-text">{label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {q.needs_review && (
+                <div className="px-2 py-1 bg-yellow-500/10 border border-yellow-500/20 rounded mb-1.5 text-yellow-400">⚠ Требует проверки</div>
+              )}
+
+              {q.reasoning && <p className="text-text/80 mb-1">{q.reasoning}</p>}
+
+              {q.evidence?.length > 0 && (
+                <div>
+                  <span className="text-muted text-[10px] font-semibold">Источники:</span>
+                  <ul className="list-disc list-inside text-muted text-[10px]">
+                    {q.evidence.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {company.address && <p className="text-xs text-muted mt-2 line-clamp-2">{company.address}</p>}
         {isAdminOrLead && (
           <div className="mt-2 flex items-center gap-2">
