@@ -120,7 +120,35 @@ async def ai_apply_field(
         del pending[request.field]
         ai_suggestions["pending"] = pending
     else:
-        raise HTTPException(status_code=400, detail=f"No pending suggestion for '{request.field}'")
+    raise HTTPException(status_code=400, detail=f"No pending suggestion for '{request.field}'")
+
+
+@router.post("/qualify/{company_id}")
+async def ai_qualify_company(
+    company_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.zveno_api_key:
+        raise HTTPException(status_code=400, detail="ZVENO API key not configured")
+
+    result = await db.execute(
+        select(Company).where(Company.id == company_id, Company.is_deleted == False)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    from ..ai_qualify import qualify_company
+    qualification = await qualify_company(company, db)
+
+    ai_suggestions = company.ai_suggestions or {}
+    ai_suggestions["qualification"] = qualification
+    company.ai_suggestions = ai_suggestions
+    await db.commit()
+    await db.refresh(company)
+
+    return {"company_id": company_id, "qualification": qualification}
 
     company.ai_suggestions = ai_suggestions if ai_suggestions else None
     await db.commit()

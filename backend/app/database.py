@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     base_url: str = "https://novel.maxnov.ru"
     tavily_api_key: str = ""
+    zveno_api_key: str = ""
+    zveno_base_url: str = "https://api.zveno.ai/v1"
 
     @property
     def db_url(self) -> str:
