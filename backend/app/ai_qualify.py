@@ -108,29 +108,36 @@ async def qualify_company(
     try:
         import httpx
         async with httpx.AsyncClient(timeout=60) as c:
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": QUALIFY_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"=== Данные компании ===\n{company_text}\n\n=== Результаты веб-поиска ===\n{search_text}",
+                    },
+                ],
+                "temperature": 0.1,
+            }
             resp = await c.post(
                 f"{settings.zveno_base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {settings.zveno_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": [
-                        {"role": "system", "content": QUALIFY_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": f"=== Данные компании ===\n{company_text}\n\n=== Результаты веб-поиска ===\n{search_text}",
-                        },
-                    ],
-                    "temperature": 0.1,
-                    "response_format": {"type": "json_object"},
-                },
+                json=payload,
             )
             data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            result.update(parsed)
+            logger.info("ZVENO response status=%s body=%s", resp.status_code, json.dumps(data, ensure_ascii=False)[:500])
+            if "choices" in data:
+                content = data["choices"][0]["message"]["content"].strip()
+                content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                parsed = json.loads(content)
+                result.update(parsed)
+            elif "error" in data:
+                result["reasoning"] = f"ZVENO error: {data['error']}"
+            else:
+                result["reasoning"] = f"Неожиданный ответ ZVENO: {json.dumps(data, ensure_ascii=False)[:300]}"
     except Exception:
         logger.exception("ZVENO qualification call failed")
         result["reasoning"] = "Ошибка вызова AI для квалификации"
