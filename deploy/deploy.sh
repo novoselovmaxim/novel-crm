@@ -56,9 +56,9 @@ echo '--- API ---'
 curl -sk https://novel.maxnov.ru/api/health
 echo ''
 echo '--- Assets ---'
-curl -sk -o /dev/null -w 'JS: %{http_code} | CSS: %{http_code}\n' \
-  https://novel.maxnov.ru/assets/index-*.js \
-  https://novel.maxnov.ru/assets/index-*.css
+for a in $(curl -sk https://novel.maxnov.ru/ | grep -o 'assets/index-[^"]*'); do
+  curl -sk -o /dev/null -w "$a: %{http_code}\n" "https://novel.maxnov.ru/$a"
+done
 "
 
 echo "🎉 Deployment complete!"
