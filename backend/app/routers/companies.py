@@ -15,7 +15,7 @@ from ..models import User, Company, EmailCommunication, CallLog, AuditLog, Impor
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, BulkAssignRequest, BulkAssignResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 from ..notifications import notifier
-from ..cp_generator import generate_cp, generate_cp_html, generate_presentation_html
+from ..cp_generator import generate_cp, generate_cp_html, generate_presentation_html, cp_email_images
 from ..gender import detect_gender, get_display_name
 from ..email_sender import send_cp_email, send_presentation_email
 from ..routers.communications import _inject_tracking
@@ -715,6 +715,7 @@ async def send_company_cp(
             greeting=greeting,
             lpr_display_name=lpr_display_name,
             message_id=message_id,
+            inline_images=cp_email_images(),
         )
 
     try:
@@ -790,6 +791,7 @@ async def send_company_presentation(
             greeting=greeting,
             lpr_display_name=lpr_display_name,
             message_id=message_id,
+            inline_images=cp_email_images(),
         )
 
     try:

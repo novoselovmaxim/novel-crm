@@ -466,29 +466,37 @@ def generate_cp(company_name="", lpr_name="", lpr_phone="", lpr_display_name="",
     return buf
 
 
-def _img_to_data_uri(path):
-    """Read image and return data URI for embedding in HTML email."""
-    if not os.path.exists(path):
-        return None
-    import base64
-    with open(path, "rb") as f:
-        data = f.read()
-    ext = os.path.splitext(path)[1].lower()
-    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(
-        ext.lstrip("."), "image/png"
-    )
-    return f"data:{mime};base64,{base64.b64encode(data).decode()}"
+def cp_email_images():
+    """Return (path, cid) pairs of logos used in CP/presentation HTML emails."""
+    images = [
+        ("intpay_logo.jpg", "intpay_logo"),
+        ("logo_novel.png", "novel_logo"),
+        ("logo-1.png", "amf_logo"),
+        ("alfa_bank.png", "alfa_logo"),
+        ("sovcombank.png", "sovcombank_logo"),
+        ("mts_bank.png", "mts_logo"),
+        ("tg_logo.png", "tg_logo"),
+    ]
+    return [(os.path.join(MEDIA_DIR, name), cid) for name, cid in images]
 
 
 def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_name="", greeting="Уважаемый"):
     """Generate CP as an HTML string suitable for email body."""
-    intpay_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "intpay_logo.jpg"))
-    novel_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo_novel.png"))
-    amf_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo-1.png"))
-    alfa_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "alfa_bank.png"))
-    sovcombank_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "sovcombank.png"))
-    mts_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "mts_bank.png"))
-    tg_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "tg_logo.png"))
+    intpay_logo = os.path.join(MEDIA_DIR, "intpay_logo.jpg")
+    novel_logo = os.path.join(MEDIA_DIR, "logo_novel.png")
+    amf_logo = os.path.join(MEDIA_DIR, "logo-1.png")
+    alfa_logo = os.path.join(MEDIA_DIR, "alfa_bank.png")
+    sovcombank_logo = os.path.join(MEDIA_DIR, "sovcombank.png")
+    mts_logo = os.path.join(MEDIA_DIR, "mts_bank.png")
+    tg_logo = os.path.join(MEDIA_DIR, "tg_logo.png")
+
+    intpay_logo_ok = os.path.exists(intpay_logo)
+    novel_logo_ok = os.path.exists(novel_logo)
+    amf_logo_ok = os.path.exists(amf_logo)
+    alfa_logo_ok = os.path.exists(alfa_logo)
+    sovcombank_logo_ok = os.path.exists(sovcombank_logo)
+    mts_logo_ok = os.path.exists(mts_logo)
+    tg_logo_ok = os.path.exists(tg_logo)
 
     O = "#FE5B24"
     D = "#1A1A2E"
@@ -532,15 +540,15 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_nam
     )
 
     bank_logos_html = ""
-    for logo_data in [alfa_logo, sovcombank_logo, mts_logo]:
-        if logo_data:
+    for logo_ok, cid in [(alfa_logo_ok, "alfa_logo"), (sovcombank_logo_ok, "sovcombank_logo"), (mts_logo_ok, "mts_logo")]:
+        if logo_ok:
             bank_logos_html += f"""<td style="padding:10px;text-align:center;width:33%">
-              <img src="{logo_data}" style="max-height:40px;max-width:120px" alt="bank"/>
+              <img src="cid:{cid}" style="max-height:40px;max-width:120px" alt="bank"/>
             </td>"""
 
     logo_block = ""
-    if intpay_logo:
-        logo_block += f'<img src="{intpay_logo}" style="height:36px;vertical-align:middle" alt="ИНТПЭЙ"/>'
+    if intpay_logo_ok:
+        logo_block += f'<img src="cid:intpay_logo" style="height:36px;vertical-align:middle" alt="ИНТПЭЙ"/>'
 
     # Build the full HTML email
     html = f"""<!DOCTYPE html>
@@ -553,8 +561,8 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_nam
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td style="vertical-align:middle">{logo_block}</td>
         <td style="text-align:right;vertical-align:middle">
-          {f'<img src="{novel_logo}" style="height:18px;vertical-align:middle" alt="NOVEL"/>' if novel_logo else ""}
-          {f'<img src="{amf_logo}" style="height:26px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo else ""}
+          {f'<img src="cid:novel_logo" style="height:18px;vertical-align:middle" alt="NOVEL"/>' if novel_logo_ok else ""}
+          {f'<img src="cid:amf_logo" style="height:26px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo_ok else ""}
         </td>
       </tr></table>
     </td>
@@ -616,7 +624,7 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_nam
       </p>
       <p style="font-size:12px;color:{G};margin:0">
         Сайт — intpaypro.ru &nbsp;·&nbsp; E-mail — info@intpaypro.ru
-        {f'&nbsp;&nbsp;<a href="https://t.me/in_veritate" style="color:{G};text-decoration:none"><img src="{tg_logo}" style="height:16px;vertical-align:middle" alt="TG"/> @in_veritate</a>' if tg_logo else ""}
+        {f'&nbsp;&nbsp;<a href="https://t.me/in_veritate" style="color:{G};text-decoration:none"><img src="cid:tg_logo" style="height:16px;vertical-align:middle" alt="TG"/> @in_veritate</a>' if tg_logo_ok else ""}
       </p>
     </td>
   </tr>
@@ -629,10 +637,15 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_nam
 
 def generate_presentation_html(company_name="", lpr_name="", lpr_phone="", lpr_display_name="", greeting="Уважаемый"):
     """Generate a short wrapper email for sending the company presentation (PDF)."""
-    intpay_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "intpay_logo.jpg"))
-    novel_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo_novel.png"))
-    amf_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo-1.png"))
-    tg_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "tg_logo.png"))
+    intpay_logo = os.path.join(MEDIA_DIR, "intpay_logo.jpg")
+    novel_logo = os.path.join(MEDIA_DIR, "logo_novel.png")
+    amf_logo = os.path.join(MEDIA_DIR, "logo-1.png")
+    tg_logo = os.path.join(MEDIA_DIR, "tg_logo.png")
+
+    intpay_logo_ok = os.path.exists(intpay_logo)
+    novel_logo_ok = os.path.exists(novel_logo)
+    amf_logo_ok = os.path.exists(amf_logo)
+    tg_logo_ok = os.path.exists(tg_logo)
 
     O = "#FE5B24"
     D = "#1A1A2E"
@@ -640,8 +653,8 @@ def generate_presentation_html(company_name="", lpr_name="", lpr_phone="", lpr_d
     L = "#999999"
 
     logo_block = ""
-    if intpay_logo:
-        logo_block += f'<img src="{intpay_logo}" style="height:36px;vertical-align:middle" alt="ИНТПЭЙ"/>'
+    if intpay_logo_ok:
+        logo_block += f'<img src="cid:intpay_logo" style="height:36px;vertical-align:middle" alt="ИНТПЭЙ"/>'
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -653,8 +666,8 @@ def generate_presentation_html(company_name="", lpr_name="", lpr_phone="", lpr_d
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td style="vertical-align:middle">{logo_block}</td>
         <td style="text-align:right;vertical-align:middle">
-          {f'<img src="{novel_logo}" style="height:18px;vertical-align:middle" alt="NOVEL"/>' if novel_logo else ""}
-          {f'<img src="{amf_logo}" style="height:26px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo else ""}
+          {f'<img src="cid:novel_logo" style="height:18px;vertical-align:middle" alt="NOVEL"/>' if novel_logo_ok else ""}
+          {f'<img src="cid:amf_logo" style="height:26px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo_ok else ""}
         </td>
       </tr></table>
     </td>
@@ -702,7 +715,7 @@ def generate_presentation_html(company_name="", lpr_name="", lpr_phone="", lpr_d
       </p>
       <p style="font-size:12px;color:{G};margin:0">
         Сайт — intpaypro.ru &nbsp;·&nbsp; E-mail — info@intpaypro.ru
-        {f'&nbsp;&nbsp;<a href="https://t.me/in_veritate" style="color:{G};text-decoration:none"><img src="{tg_logo}" style="height:16px;vertical-align:middle" alt="TG"/> @in_veritate</a>' if tg_logo else ""}
+        {f'&nbsp;&nbsp;<a href="https://t.me/in_veritate" style="color:{G};text-decoration:none"><img src="cid:tg_logo" style="height:16px;vertical-align:middle" alt="TG"/> @in_veritate</a>' if tg_logo_ok else ""}
       </p>
     </td>
   </tr>
