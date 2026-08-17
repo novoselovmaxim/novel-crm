@@ -464,7 +464,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
         <div className="p-3 border-b border-muted/10 space-y-2 shrink-0">
         <input
           type="text"
-          placeholder="Поиск по названию, ИНН..."
+          placeholder="Поиск по названию, ИНН, ФИО..."
           value={searchInput}
           onChange={(e) => { setSearchInput(e.target.value); setPage(1) }}
           className="w-full px-4 py-2 bg-bg border border-muted/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
