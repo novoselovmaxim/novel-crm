@@ -8,21 +8,21 @@ import csv
 import io
 import uuid
 import asyncio
+from pathlib import Path
 
 from ..database import get_db, settings
 from ..models import User, Company, EmailCommunication, CallLog, AuditLog, ImportSourceData, CompanyComment, Meeting, PipelineLog, FollowUp
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, BulkAssignRequest, BulkAssignResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 from ..notifications import notifier
-from ..cp_generator import generate_cp, generate_cp_html
+from ..cp_generator import generate_cp, generate_cp_html, generate_presentation_html
 from ..gender import detect_gender, get_display_name
-from ..email_sender import send_cp_email
+from ..email_sender import send_cp_email, send_presentation_email
 from ..routers.communications import _inject_tracking
 from urllib.parse import quote
 import logging
 
 logger = logging.getLogger(__name__)
-from ..email_sender import send_cp_email
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -728,3 +728,78 @@ async def send_company_cp(
 
     await db.commit()
     return {"message": f"КП отправлено на {company.lpr_email}"}
+
+
+@router.post("/{company_id}/presentation/send")
+async def send_company_presentation(
+    company_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Company).where(Company.id == company_id, Company.is_deleted == False))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    if not company.lpr_email:
+        raise HTTPException(status_code=400, detail="Заполните поле «Email ЛПР»")
+
+    media_path = Path(__file__).resolve().parent.parent / "media" / "presentation.pdf"
+    if not media_path.exists():
+        raise HTTPException(status_code=500, detail="Файл презентации не найден на сервере")
+
+    lpr_display_name = get_display_name(company.director)
+    gender = company.director_gender or detect_gender(company.director)
+    greeting = "Уважаемая" if gender == "female" else "Уважаемый"
+    try:
+        html = generate_presentation_html(
+            company_name=company.name or "",
+            lpr_name=company.director or "",
+            lpr_phone=company.lpr_phone or "",
+            lpr_display_name=lpr_display_name,
+            greeting=greeting,
+        )
+    except Exception:
+        logger.exception(f"Presentation HTML generation failed for company {company_id}")
+        raise HTTPException(status_code=500, detail="Ошибка генерации письма")
+
+    hostname = settings.base_url.replace("https://", "").replace("http://", "").split("/")[0]
+    message_id = f"<{uuid.uuid4()}@{hostname}>"
+
+    comm = EmailCommunication(
+        company_id=company_id,
+        user_id=current_user.id,
+        sender_email=settings.smtp_user or "info@intpaypro.ru",
+        recipient_email=company.lpr_email,
+        subject="Презентация — валютные платежи — ИНТПЭЙ — ГК НОВЕЛЬ",
+        body_html=html,
+        message_id=message_id,
+    )
+    db.add(comm)
+    await db.commit()
+    await db.refresh(comm)
+
+    modified_html = _inject_tracking(html, comm.id)
+
+    def _send():
+        send_presentation_email(
+            recipient_email=company.lpr_email,
+            html_body=modified_html,
+            attachment_path=str(media_path),
+            company_name=company.name or "",
+            greeting=greeting,
+            lpr_display_name=lpr_display_name,
+            message_id=message_id,
+        )
+
+    try:
+        await asyncio.to_thread(_send)
+        comm.status = "sent"
+    except Exception:
+        logger.exception(f"Presentation email send failed for company {company_id}")
+        comm.status = "failed"
+        await db.commit()
+        raise HTTPException(status_code=500, detail="Ошибка отправки email")
+
+    await db.commit()
+    return {"message": f"Презентация отправлена на {company.lpr_email}"}
