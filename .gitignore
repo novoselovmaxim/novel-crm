@@ -9,4 +9,5 @@ build/
 .env
 *.DS_Store
 .playwright-mcp/
+graphify-out/
 *.png
