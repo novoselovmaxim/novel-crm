@@ -295,6 +295,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const NUM_FIELDS = new Set(['revenue', 'profit', 'employees', 'capital', 'balance'])
   const [saveError, setSaveError] = useState('')
   const [cpError, setCpError] = useState('')
+  const [sendingTg, setSendingTg] = useState(false)
 
   const handleFieldUpdate = (field: string, val: string) => {
     const parsed = NUM_FIELDS.has(field) ? (val ? parseInt(val.replace(/\s/g, ''), 10) : null) : val
@@ -658,6 +659,39 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
           {/* Telegram */}
           <Section title="Telegram / Мессенджер">
             <Field label="TG-контакт" value={company.tg_contact} field="tg_contact" companyId={company.id} onUpdate={handleFieldUpdate} onError={setSaveError} />
+            <div className="py-1.5 border-b border-muted/5">
+              <button
+                onClick={async () => {
+                  const handle = (company.tg_contact || '').replace(/^@/, '').trim()
+                  if (!handle || sendingTg) return
+                  setSendingTg(true)
+                  try {
+                    window.open(`https://t.me/${handle}`, '_blank')
+                    await api.patch(`/companies/${company.id}`, { tg_status: 'contacted' })
+                    await api.post(`/companies/${company.id}/call`, {
+                      call_status: 'tg',
+                      notes: 'Написал в Telegram',
+                      next_call_date: null,
+                    })
+                    setCompany(prev => ({ ...prev, tg_status: 'contacted' }))
+                    api.get(`/companies/${company.id}/calls`).then(({ data }) => setCallLogs(data)).catch(() => {})
+                    setRefreshKey(k => k + 1)
+                  } catch { /* прозрачно */ }
+                  setSendingTg(false)
+                }}
+                disabled={!company.tg_contact || sendingTg}
+                className={`w-full py-2 mt-1 rounded-lg text-sm font-medium transition-colors ${
+                  company.tg_contact
+                    ? 'bg-sky-500/60 hover:bg-sky-500/80 text-white disabled:opacity-50'
+                    : 'bg-bg border border-muted/20 text-muted cursor-not-allowed'
+                }`}
+              >
+                ✈️ {sendingTg ? 'Отмечаем...' : 'Написать клиенту'}
+              </button>
+              {!company.tg_contact && (
+                <p className="text-[11px] text-muted mt-1">Заполните «TG-контакт», чтобы открыть чат</p>
+              )}
+            </div>
             <div className="flex justify-between py-1.5 border-b border-muted/5 gap-4">
               <span className="text-xs shrink-0 w-40 text-muted">TG-статус</span>
               <select
@@ -830,6 +864,27 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                 className="w-full py-2 bg-blue-600/50 hover:bg-blue-600/70 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 ✉️ Отправить по email
+              </button>
+              <button
+                onClick={async () => {
+                  const missing: string[] = []
+                  if (!company.lpr_email) missing.push('Email ЛПР')
+                  if (missing.length) {
+                    setCpError('Заполните: ' + missing.join(', '))
+                    return
+                  }
+                  setCpError('')
+                  try {
+                    await api.post(`/companies/${company.id}/presentation/send`)
+                    alert('Презентация отправлена на ' + company.lpr_email)
+                  } catch (e: any) {
+                    const msg = e?.response?.data?.detail || 'Ошибка отправки презентации'
+                    setCpError(msg)
+                  }
+                }}
+                className="w-full py-2 bg-purple-600/50 hover:bg-purple-600/70 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                📎 Отправить презентацию
               </button>
             </div>
             {cpError && (

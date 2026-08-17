@@ -1,7 +1,9 @@
 """Send emails via SMTP."""
 import logging
+import os
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 
@@ -18,8 +20,9 @@ def _send_via_smtp(
     sender_name: str = "ИНТПЭЙ",
     sender_email: str = "info@intpaypro.ru",
     message_id: str | None = None,
+    attachments: list[tuple[str, str]] | None = None,
 ):
-    msg = MIMEMultipart("alternative")
+    msg = MIMEMultipart("mixed")
     msg["From"] = Header(sender_name, "utf-8").encode() + f" <{sender_email}>"
     msg["To"] = recipient_email
     msg["Subject"] = subject
@@ -30,10 +33,22 @@ def _send_via_smtp(
     if message_id:
         msg["Message-ID"] = message_id
 
+    alternative = MIMEMultipart("alternative")
     if text_body:
-        msg.attach(MIMEText(text_body, "plain"))
+        alternative.attach(MIMEText(text_body, "plain"))
     if html_body:
-        msg.attach(MIMEText(html_body, "html"))
+        alternative.attach(MIMEText(html_body, "html"))
+    msg.attach(alternative)
+
+    for path, filename in (attachments or []):
+        with open(path, "rb") as f:
+            part = MIMEApplication(f.read(), _subtype="pdf")
+        part.add_header(
+            "Content-Disposition",
+            "attachment",
+            filename=filename,
+        )
+        msg.attach(part)
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
         server.set_debuglevel(1)
@@ -105,4 +120,60 @@ Telegram: @in_veritate (https://t.me/in_veritate)
         html_body=html_body,
         text_body=text,
         message_id=message_id,
+    )
+
+
+def send_presentation_email(
+    recipient_email: str,
+    html_body: str,
+    attachment_path: str,
+    company_name: str = "",
+    greeting: str = "Уважаемый",
+    lpr_display_name: str = "клиент",
+    message_id: str | None = None,
+) -> None:
+    if not os.path.exists(attachment_path):
+        raise FileNotFoundError(f"Attachment not found: {attachment_path}")
+
+    text = f"""Презентация — валютные платежи от ИНТПЭЙ / ГК НОВЕЛЬ
+
+Компания: {company_name}
+
+{greeting} {lpr_display_name}!
+
+Направляем вам презентацию ИНТПЭЙ — платёжного подразделения международного холдинга NOVEL GROUP.
+Партнёрство с Арабским валютным фондом (AMF) гарантирует полную юридическую чистоту каждого перевода.
+
+НАШИ ПРЕИМУЩЕСТВА:
+- Экономия до 70% (комиссия от 0,5%)
+- Скорость 1-3 дня
+- Валютный контроль
+- Любые направления
+
+СХЕМА РАБОТЫ:
+01 Заявка → ответ за 30 минут
+02 Договор → тариф под ваш объём
+03 Перевод → зачисление за 1-3 дня
+
+ПОЧЕМУ НАМ ДОВЕРЯЮТ:
+✓ 24 года на рынке
+✓ Партнёрство с AMF
+✓ Работаем через крупнейшие банки-партнёры
+
+БАНКИ-ПАРТНЁРЫ: Альфа-Банк, Совкомбанк, МТС Банк
+
+Презентация компании — во вложении к этому письму.
+
+Сайт: intpaypro.ru
+E-mail: info@intpaypro.ru
+Telegram: @in_veritate (https://t.me/in_veritate)
+
+Отправлено ИНТПЭЙ / ГК НОВЕЛЬ"""
+    _send_via_smtp(
+        recipient_email=recipient_email,
+        subject="Презентация — валютные платежи — ИНТПЭЙ — ГК НОВЕЛЬ",
+        html_body=html_body,
+        text_body=text,
+        message_id=message_id,
+        attachments=[(attachment_path, "ГК Новель.pdf")],
     )

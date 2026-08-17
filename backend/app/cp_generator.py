@@ -625,3 +625,89 @@ def generate_cp_html(company_name="", lpr_name="", lpr_phone="", lpr_display_nam
 </html>"""
 
     return html
+
+
+def generate_presentation_html(company_name="", lpr_name="", lpr_phone="", lpr_display_name="", greeting="Уважаемый"):
+    """Generate a short wrapper email for sending the company presentation (PDF)."""
+    intpay_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "intpay_logo.jpg"))
+    novel_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo_novel.png"))
+    amf_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "logo-1.png"))
+    tg_logo = _img_to_data_uri(os.path.join(MEDIA_DIR, "tg_logo.png"))
+
+    O = "#FE5B24"
+    D = "#1A1A2E"
+    G = "#666666"
+    L = "#999999"
+
+    logo_block = ""
+    if intpay_logo:
+        logo_block += f'<img src="{intpay_logo}" style="height:36px;vertical-align:middle" alt="ИНТПЭЙ"/>'
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif">
+<table align="center" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff">
+  <tr>
+    <td style="padding:15px 20px;border-bottom:3px solid {O}">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="vertical-align:middle">{logo_block}</td>
+        <td style="text-align:right;vertical-align:middle">
+          {f'<img src="{novel_logo}" style="height:18px;vertical-align:middle" alt="NOVEL"/>' if novel_logo else ""}
+          {f'<img src="{amf_logo}" style="height:26px;vertical-align:middle;margin-left:8px" alt="AMF"/>' if amf_logo else ""}
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:20px 30px">
+      <div style="text-align:right;font-size:14px;color:{L};margin-bottom:4px">Компания: <strong style="color:{D}">{company_name}</strong></div>
+      <div style="text-align:right;font-size:14px;color:{D};margin-bottom:16px">
+        <strong>{lpr_name}</strong><br>
+        <span style="color:{L}">Тел:</span> <strong>{lpr_phone}</strong>
+      </div>
+
+      <p style="font-size:16px;color:{D};margin:8px 0">
+        {greeting} <strong style="color:{O}">{lpr_display_name}!</strong>
+      </p>
+
+      <p style="font-size:16px;color:{D};line-height:1.5;margin:12px 0">
+        Направляем вам презентацию <strong style="color:{O}">ИНТПЭЙ</strong> — платёжного подразделения
+        международного холдинга <strong>NOVEL GROUP</strong>.
+      </p>
+
+      <p style="font-size:16px;color:{D};line-height:1.5;margin:12px 0">
+        Файл <strong>«ГК Новель.pdf»</strong> — во вложении к этому письму.
+      </p>
+
+      <div style="text-align:center;font-size:14px;color:{O};font-weight:bold;text-transform:uppercase;padding-bottom:4px;border-bottom:1px solid #ddd;margin-bottom:12px">
+        НАШИ ПРЕИМУЩЕСТВА
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:8px 15px;border-left:3px solid {O};font-size:13px;color:{D}"><strong>Экономия до 70%</strong> — комиссия от 0,5% вместо банковских 2–5%.</td></tr>
+        <tr><td style="padding:8px 15px;border-left:3px solid {O};font-size:13px;color:{D}"><strong>Скорость 1–3 дня</strong> — срочные переводы за 24 часа.</td></tr>
+        <tr><td style="padding:8px 15px;border-left:3px solid {O};font-size:13px;color:{D}"><strong>Валютный контроль</strong> — полный пакет документов для ЦБ и вашего банка.</td></tr>
+        <tr><td style="padding:8px 15px;border-left:3px solid {O};font-size:13px;color:{D}"><strong>Любые направления</strong> — Европа, Азия, ОАЭ, Китай, Великобритания, США.</td></tr>
+      </table>
+
+      <p style="font-size:14px;color:{D};line-height:1.5;margin:16px 0">
+        Будем рады ответить на вопросы и подготовить индивидуальный тариф под ваш объём платежей.
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="border-top:3px solid {O};padding:15px 20px;text-align:center">
+      <p style="font-size:13px;color:{D};font-weight:bold;margin:0 0 8px">
+        Свяжитесь с нами для индивидуального тарифа:
+      </p>
+      <p style="font-size:12px;color:{G};margin:0">
+        Сайт — intpaypro.ru &nbsp;·&nbsp; E-mail — info@intpaypro.ru
+        {f'&nbsp;&nbsp;<a href="https://t.me/in_veritate" style="color:{G};text-decoration:none"><img src="{tg_logo}" style="height:16px;vertical-align:middle" alt="TG"/> @in_veritate</a>' if tg_logo else ""}
+      </p>
+    </td>
+  </tr>
+</table>
+</body>
+</html>"""
+
+    return html
