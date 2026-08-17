@@ -167,6 +167,8 @@ class CompanyResponse(CompanyBase):
     is_deleted: bool
     created_at: datetime
     updated_at: datetime
+    has_meeting: Optional[bool] = None
+    next_meeting: Optional[dict] = None
     
     class Config:
         from_attributes = True
@@ -332,6 +334,13 @@ class BulkStatusRequest(BaseModel):
     call_status: str
 
 class BulkStatusResponse(BaseModel):
+    updated: int
+
+class BulkAssignRequest(BaseModel):
+    company_ids: list[uuid.UUID]
+    user_id: Optional[uuid.UUID] = None
+
+class BulkAssignResponse(BaseModel):
     updated: int
 
 class ExportRequest(BaseModel):

@@ -52,6 +52,8 @@ export interface Company {
   comment_static: string | null
   call_status: string
   pipeline_stage: string
+  has_meeting?: boolean | null
+  next_meeting?: { date: string; hour: number; company_name?: string; notes?: string | null } | null
   tg_contact: string | null
   tg_status: string
   messenger: string | null

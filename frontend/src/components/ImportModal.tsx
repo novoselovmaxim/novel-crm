@@ -60,6 +60,7 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [runStatus, setRunStatus] = useState<ImportRunStatus | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollStartRef = useRef<number | null>(null)
 
   useEffect(() => {
     api.get('/import/fields').then(({ data }) => setFields(data))
@@ -131,8 +132,15 @@ export default function ImportModal({ onClose }: { onClose: () => void }) {
         template_name: tmpl?.name || null,
         overwrite,
       })
+      pollStartRef.current = Date.now()
       pollRef.current = setInterval(async () => {
         try {
+          if (pollStartRef.current && Date.now() - pollStartRef.current > 900000) {
+            if (pollRef.current) clearInterval(pollRef.current)
+            setError('Import timed out after 15 minutes')
+            setStep('mapping')
+            return
+          }
           const { data: status } = await api.get<ImportRunStatus>(`/import/run/${data.source_id}/status`)
           setRunStatus(status)
           if (status.status === 'imported' || status.status === 'error') {

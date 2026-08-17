@@ -114,6 +114,17 @@ export default function PipelineBoard({ onSelectCompany, onNavigateToCompany }: 
                             </a>
                           )}
                           <StatusBadge status={company.call_status} kind="call" />
+                          {company.call_status === 'meeting' && (
+                            company.next_meeting ? (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded whitespace-nowrap">
+                                📅 {company.next_meeting.date} {String(company.next_meeting.hour).padStart(2, '0')}:00
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-orange-500/15 text-orange-400 rounded whitespace-nowrap font-medium">
+                                ⚠ нет даты
+                              </span>
+                            )
+                          )}
                         </div>
                         {getNextStages(stage).length > 0 && (
                           <div className="relative" onClick={e => e.stopPropagation()}>

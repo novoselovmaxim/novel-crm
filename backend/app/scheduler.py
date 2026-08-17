@@ -112,41 +112,50 @@ async def evening_summary():
                 )
 
 async def meeting_reminders():
-    now = datetime.now(timezone.utc)
-    now_msk = now.astimezone(MSK)
+    now_msk = datetime.now(timezone.utc).astimezone(MSK)
     today = now_msk.date()
-    current_hour = now_msk.hour
-    current_minute = now_msk.minute
+    tomorrow = today + timedelta(days=1)
+    minutes_now = now_msk.hour * 60 + now_msk.minute
 
     async with async_session() as db:
         meetings = await db.execute(
             select(Meeting, Company.name, User.tg_chat_id, User.name.label("manager_name"))
             .join(Company, Meeting.company_id == Company.id)
             .join(User, Meeting.booked_by == User.id)
-            .where(
-                Meeting.date == today,
-                Meeting.hour.in_([current_hour + 1, current_hour])
-            )
+            .where(Meeting.date.in_([today, tomorrow]))
         )
         meetings = meetings.all()
+
+        admin_rows = await db.execute(
+            select(User.id, User.tg_chat_id).where(User.role.in_(["admin", "lead"]), User.tg_chat_id != None)
+        )
+        admin_chats = {admin_chat for _, admin_chat in admin_rows.all() if admin_chat}
 
         for meeting, company_name, chat_id, manager_name in meetings:
             if not chat_id:
                 continue
-            if meeting.hour == current_hour + 1:
-                diff = (meeting.hour * 60 - (current_hour * 60 + current_minute))
-                if diff <= 60 and diff > 0:
-                    await notifier.send_message(
-                        chat_id,
-                        f"Напоминание: встреча с {company_name} через {diff} мин."
-                    )
-            if meeting.hour == current_hour and current_minute <= 15:
-                minutes_into = current_minute
-                if minutes_into <= 15:
-                    await notifier.send_message(
-                        chat_id,
-                        f"Напоминание: встреча с {company_name} началась!"
-                    )
+            chat_ids = {chat_id} | admin_chats
+            if meeting.date == tomorrow and not meeting.reminded_1d:
+                text = f"⏰ Напоминание: встреча с {company_name} завтра в {meeting.hour:02d}:00."
+                for cid in chat_ids:
+                    await notifier.send_message(cid, text)
+                meeting.reminded_1d = True
+                await db.commit()
+            elif meeting.date == today:
+                meeting_minutes = meeting.hour * 60
+                minutes_until = meeting_minutes - minutes_now
+                if not meeting.reminded_1h and 45 <= minutes_until <= 75:
+                    text = f"⏰ Напоминание: встреча с {company_name} через ~1 час (в {meeting.hour:02d}:00)."
+                    for cid in chat_ids:
+                        await notifier.send_message(cid, text)
+                    meeting.reminded_1h = True
+                    await db.commit()
+                elif not meeting.reminded_10m and 1 <= minutes_until <= 15:
+                    text = f"⏰ Напоминание: встреча с {company_name} через ~10 минут (в {meeting.hour:02d}:00)."
+                    for cid in chat_ids:
+                        await notifier.send_message(cid, text)
+                    meeting.reminded_10m = True
+                    await db.commit()
 
 async def stale_check():
     three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)

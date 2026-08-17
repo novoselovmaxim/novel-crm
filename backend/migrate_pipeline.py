@@ -42,6 +42,11 @@ async def migrate():
         if result.rowcount:
             print(f"  assigned+new → in_progress: {result.rowcount} companies")
 
+        # Meeting reminder flags
+        await conn.execute(text("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS reminded_1d BOOLEAN DEFAULT false"))
+        await conn.execute(text("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS reminded_1h BOOLEAN DEFAULT false"))
+        await conn.execute(text("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS reminded_10m BOOLEAN DEFAULT false"))
+
         print("Migration complete")
 
 

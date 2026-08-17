@@ -10,7 +10,7 @@ import asyncio
 
 from ..database import get_db, settings
 from ..models import User, Company, EmailCommunication, CallLog, AuditLog, ImportSourceData, CompanyComment, Meeting
-from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
+from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, BulkAssignRequest, BulkAssignResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 from ..notifications import notifier
 from ..cp_generator import generate_cp, generate_cp_html
@@ -281,16 +281,6 @@ async def log_call(
     await db.commit()
     await db.refresh(call_log)
 
-    if request.call_status == "meeting":
-        admins = await db.execute(
-            select(User).where(User.role.in_(["admin", "lead"]), User.tg_chat_id != None)
-        )
-        for admin in admins.scalars().all():
-            await notifier.send_message(
-                admin.tg_chat_id,
-                f"Назначена встреча с {company.name} (ИНН {company.inn})"
-            )
-
     return call_log
 
 @router.delete("/{company_id}/calls/{call_id}")
@@ -360,6 +350,21 @@ async def schedule_meeting(
     db.add(call_log)
     await db.commit()
     await db.refresh(meeting)
+
+    admin_ids = []
+    admins = await db.execute(
+        select(User.id).where(User.role.in_(["admin", "lead"]))
+    )
+    admin_ids = [u for u in admins.scalars().all() if u != current_user.id]
+
+    await notifier.notify_meeting(
+        f"📅 Назначена встреча с {company.name} (ИНН {company.inn})\n"
+        f"🗓 {request.meeting_date} в {request.meeting_time}"
+        + (f"\n📝 {request.notes}" if request.notes else ""),
+        manager_id=current_user.id,
+        admin_ids=admin_ids,
+    )
+
     return {"status": "ok", "message": f"Meeting scheduled for {request.meeting_date} at {request.meeting_time}", "meeting_id": str(meeting.id)}
 
 @router.get("/{company_id}/comments", response_model=list[CommentResponse])
@@ -493,16 +498,6 @@ async def update_company_status(
     await db.commit()
     await db.refresh(company)
 
-    if request.call_status == "meeting":
-        admins = await db.execute(
-            select(User).where(User.role.in_(["admin", "lead"]), User.tg_chat_id != None)
-        )
-        for admin in admins.scalars().all():
-            await notifier.send_message(
-                admin.tg_chat_id,
-                f"Назначена встреча с {company.name} (ИНН {company.inn})"
-            )
-
     return company
 
 @router.delete("/{company_id}")
@@ -542,6 +537,29 @@ async def bulk_update_status(
 
     await db.commit()
     return BulkStatusResponse(updated=len(companies))
+
+@router.post("/bulk-assign", response_model=BulkAssignResponse)
+async def bulk_assign_companies(
+    request: BulkAssignRequest,
+    current_user: User = Depends(require_admin_or_lead),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(Company).where(
+            Company.id.in_(request.company_ids),
+            Company.is_deleted == False
+        )
+    )
+    companies = result.scalars().all()
+
+    if not companies:
+        raise HTTPException(status_code=404, detail="No companies found")
+
+    for company in companies:
+        company.assigned_to = request.user_id
+
+    await db.commit()
+    return BulkAssignResponse(updated=len(companies))
 
 @router.post("/export")
 async def export_companies(

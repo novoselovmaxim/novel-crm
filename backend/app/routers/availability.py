@@ -10,6 +10,7 @@ from sqlalchemy import select, delete, and_
 from ..database import get_db
 from ..models import User, Company, AvailabilitySlot, Meeting
 from ..auth import get_current_user, require_admin_or_lead
+from ..notifications import notifier
 
 router = APIRouter(prefix="/api/availability", tags=["availability"])
 
@@ -203,6 +204,18 @@ async def book_meeting(
 
     await db.commit()
     await db.refresh(meeting)
+
+    admin_ids = []
+    admins = await db.execute(select(User.id).where(User.role.in_(["admin", "lead"])))
+    admin_ids = [u for u in admins.scalars().all() if u != current_user.id]
+
+    await notifier.notify_meeting(
+        f"📅 Назначена встреча с {company.name}\n"
+        f"🗓 {meeting_date} в {body.hour}:00",
+        manager_id=current_user.id,
+        admin_ids=admin_ids,
+    )
+
     return {"status": "ok", "meeting_id": str(meeting.id)}
 
 

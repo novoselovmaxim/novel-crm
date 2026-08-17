@@ -5,7 +5,7 @@ from typing import Optional
 import uuid
 
 from ..database import get_db
-from ..models import User, Company, PipelineLog
+from ..models import User, Company, PipelineLog, Meeting
 from ..schemas import CompanyResponse, PipelineLogResponse, PipelineStageUpdate
 from ..auth import get_current_user
 
@@ -43,13 +43,33 @@ async def get_pipeline_board(
     result = await db.execute(base)
     all_companies = result.scalars().all()
 
+    meeting_map = {}
+    m_result = await db.execute(
+        select(Meeting, Company.name)
+        .join(Company, Meeting.company_id == Company.id)
+        .order_by(Meeting.date.desc(), Meeting.hour.desc())
+    )
+    for m, cname in m_result.all():
+        meeting_map.setdefault(str(m.company_id), {
+            "date": m.date.isoformat(),
+            "hour": m.hour,
+            "company_name": cname,
+            "notes": m.notes,
+        })
+
     groups = []
     for stage in PIPELINE_STAGES:
         stage_companies = [c for c in all_companies if c.pipeline_stage == stage]
+        items = []
+        for c in stage_companies[:20]:
+            data = CompanyResponse.model_validate(c)
+            data.has_meeting = str(c.id) in meeting_map
+            data.next_meeting = meeting_map.get(str(c.id))
+            items.append(data)
         groups.append({
             "stage": stage,
             "count": len(stage_companies),
-            "companies": [CompanyResponse.model_validate(c) for c in stage_companies[:20]],
+            "companies": items,
         })
 
     return {"groups": groups, "total": len(all_companies)}
