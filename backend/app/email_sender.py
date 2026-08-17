@@ -3,6 +3,7 @@ import logging
 import os
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
@@ -21,6 +22,7 @@ def _send_via_smtp(
     sender_email: str = "info@intpaypro.ru",
     message_id: str | None = None,
     attachments: list[tuple[str, str]] | None = None,
+    inline_images: list[tuple[str, str]] | None = None,
 ):
     msg = MIMEMultipart("mixed")
     msg["From"] = Header(sender_name, "utf-8").encode() + f" <{sender_email}>"
@@ -49,6 +51,15 @@ def _send_via_smtp(
             filename=filename,
         )
         msg.attach(part)
+
+    for path, cid in (inline_images or []):
+        if not os.path.exists(path):
+            continue
+        with open(path, "rb") as f:
+            img = MIMEImage(f.read())
+        img.add_header("Content-ID", f"<{cid}>")
+        img.add_header("Content-Disposition", "inline", filename=os.path.basename(path))
+        msg.attach(img)
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
         server.set_debuglevel(1)
@@ -79,6 +90,7 @@ def send_cp_email(
     greeting: str = "Уважаемый",
     lpr_display_name: str = "клиент",
     message_id: str | None = None,
+    inline_images: list[tuple[str, str]] | None = None,
 ) -> None:
     text = f"""Коммерческое предложение — валютные платежи от ИНТПЭЙ / ГК НОВЕЛЬ
 
@@ -120,6 +132,7 @@ Telegram: @in_veritate (https://t.me/in_veritate)
         html_body=html_body,
         text_body=text,
         message_id=message_id,
+        inline_images=inline_images,
     )
 
 
@@ -131,6 +144,7 @@ def send_presentation_email(
     greeting: str = "Уважаемый",
     lpr_display_name: str = "клиент",
     message_id: str | None = None,
+    inline_images: list[tuple[str, str]] | None = None,
 ) -> None:
     if not os.path.exists(attachment_path):
         raise FileNotFoundError(f"Attachment not found: {attachment_path}")
@@ -176,4 +190,5 @@ Telegram: @in_veritate (https://t.me/in_veritate)
         text_body=text,
         message_id=message_id,
         attachments=[(attachment_path, "ГК Новель.pdf")],
+        inline_images=inline_images,
     )
