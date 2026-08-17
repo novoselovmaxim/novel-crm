@@ -145,6 +145,9 @@ class Meeting(Base):
     booked_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     date = Column(Date, nullable=False)
     hour = Column(Integer, nullable=False)  # 0-23
+    reminded_1d = Column(Boolean, default=False)
+    reminded_1h = Column(Boolean, default=False)
+    reminded_10m = Column(Boolean, default=False)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

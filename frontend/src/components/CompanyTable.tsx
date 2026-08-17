@@ -269,7 +269,7 @@ function saveTableState(state: Record<string, unknown>) {
   } catch {}
 }
 
-export default function CompanyTable({ pipelineFilter }: { pipelineFilter?: string | null }) {
+export default function CompanyTable({ pipelineFilter, openCompanyId: externalCompanyId, onCompanyClose }: { pipelineFilter?: string | null; openCompanyId?: string | null; onCompanyClose?: () => void }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState(() => loadSavedState('searchInput', ''))
@@ -335,6 +335,11 @@ export default function CompanyTable({ pipelineFilter }: { pipelineFilter?: stri
   useEffect(() => {
     setPage(1)
   }, [pipelineFilter])
+
+  useEffect(() => {
+    if (!externalCompanyId) return
+    api.get(`/companies/${externalCompanyId}`).then(({ data }) => setSelectedCompany(data)).catch(() => {})
+  }, [externalCompanyId])
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput), 400)
@@ -581,6 +586,29 @@ export default function CompanyTable({ pipelineFilter }: { pipelineFilter?: stri
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
+          {isAdminOrLead && (
+            <select
+              value=""
+              onChange={async (e) => {
+                const val = e.target.value
+                if (!val) return
+                try {
+                  await api.post('/companies/bulk-assign', { company_ids: [...selectedIds], user_id: val === 'unassign' ? null : val })
+                  setSelectedIds(new Set())
+                  setRefreshKey(k => k + 1)
+                } catch {
+                  alert('Ошибка при назначении менеджера')
+                }
+              }}
+              className="px-2 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Назначить менеджера</option>
+              <option value="unassign">Снять менеджера</option>
+              {managers.map(m => (
+                <option key={m.id} value={m.id}>{m.name || m.email}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={async () => {
               try {
@@ -777,7 +805,7 @@ export default function CompanyTable({ pipelineFilter }: { pipelineFilter?: stri
       {/* Company Card - right side */}
       {selectedCompany && (
         <div className="shrink-0 border-l border-muted/10">
-          <CompanyCard company={selectedCompany} onClose={() => setSelectedCompany(null)} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} />
+          <CompanyCard company={selectedCompany} onClose={() => { setSelectedCompany(null); onCompanyClose?.() }} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} />
         </div>
       )}
 

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
     zveno_api_key: str = ""
     zveno_base_url: str = "https://api.zveno.ai/v1"
+    llm_model: str = "openai/gpt-4o-mini"
 
     @property
     def db_url(self) -> str:

@@ -5,6 +5,7 @@ import CompanyTable from '../components/CompanyTable'
 import PipelineBoard from '../components/PipelineBoard'
 import ImportModal from '../components/ImportModal'
 import ProfileModal from '../components/ProfileModal'
+import GuideModal, { shouldShowGuide } from '../components/GuideModal'
 import StatusBadge from '../components/StatusBadge'
 import { DashboardStats } from '../types'
 
@@ -22,9 +23,18 @@ export default function Dashboard() {
   const [showProfile, setShowProfile] = useState(false)
   const [activeTab, setActiveTab] = useState('companies')
   const [pipelineFilter, setPipelineFilter] = useState<string | null>(null)
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
+  const [showGuide, setShowGuide] = useState(false)
 
   useEffect(() => {
     api.get('/dashboard/me').then(({ data }) => setMetrics(data))
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (shouldShowGuide()) setShowGuide(true)
+    }, 600)
+    return () => clearTimeout(timer)
   }, [])
 
   return (
@@ -36,6 +46,9 @@ export default function Dashboard() {
             <button onClick={() => setShowImport(true)} className="text-sm text-muted hover:text-text">Импорт</button>
           )}
           <button onClick={() => setShowProfile(true)} className="text-sm text-muted hover:text-text">Настройки</button>
+          <button onClick={() => setShowGuide(true)} className="w-8 h-8 rounded-full font-bold text-sm bg-accent/20 text-accent hover:bg-accent/30 transition-colors" title="Мануал" aria-label="Открыть мануал">
+            ?
+          </button>
           <span className="text-sm text-muted">{user?.name || user?.email}</span>
           <button onClick={logout} className="text-sm text-muted hover:text-text">Выйти</button>
         </div>
@@ -100,11 +113,11 @@ export default function Dashboard() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} />}
+        {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} openCompanyId={selectedCompanyId} onCompanyClose={() => setSelectedCompanyId(null)} />}
         {activeTab === 'pipeline' && (
           <PipelineBoard
-            onSelectCompany={(id) => console.log('select', id)}
-            onNavigateToCompany={(stage) => { setActiveTab('companies'); setPipelineFilter(stage) }}
+            onSelectCompany={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}
+            onNavigateToCompany={(stage) => { setSelectedCompanyId(null); setActiveTab('companies'); setPipelineFilter(stage) }}
           />
         )}
         {activeTab === 'followup' && (
@@ -116,6 +129,7 @@ export default function Dashboard() {
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
+      <GuideModal open={showGuide} onClose={() => setShowGuide(false)} />
     </div>
   )
 }

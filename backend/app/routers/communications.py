@@ -35,9 +35,6 @@ async def send_email_endpoint(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    hostname = settings.base_url.replace("https://", "").replace("http://", "").split("/")[0]
-    message_id = f"<{comm.id}@{hostname}>"
-
     comm = EmailCommunication(
         company_id=req.company_id,
         user_id=current_user.id,
@@ -46,13 +43,16 @@ async def send_email_endpoint(
         subject=req.subject,
         body_html=req.body_html,
         body_text=req.body_text,
-        message_id=message_id,
     )
     db.add(comm)
     await db.commit()
     await db.refresh(comm)
 
     comm_id = comm.id
+    hostname = settings.base_url.replace("https://", "").replace("http://", "").split("/")[0]
+    message_id = f"<{comm_id}@{hostname}>"
+    comm.message_id = message_id
+    await db.commit()
     modified_html = _inject_tracking(req.body_html, comm_id)
 
     def _send():

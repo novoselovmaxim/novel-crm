@@ -1,5 +1,6 @@
 import asyncio
 import os
+import html
 import logging
 from typing import Optional
 from sqlalchemy import select
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class TelegramNotifier:
     def __init__(self):
-        self.token = os.getenv("TG_BOT_TOKEN", "7700904608:AAEqNYwQ2pMUXsmidO9P0fkLzvgFHbI4rOY")
+        self.token = os.getenv("TG_BOT_TOKEN", "")
         self.bot = Bot(token=self.token)
         self._initialized = False
 
@@ -32,6 +33,8 @@ class TelegramNotifier:
             logger.warning("Telegram bot not initialized, skipping message")
             return False
         try:
+            if parse_mode == "HTML":
+                text = html.escape(text)
             await self.bot.send_message(
                 chat_id=chat_id,
                 text=text,
@@ -56,5 +59,22 @@ class TelegramNotifier:
             users = result.scalars().all()
             for user in users:
                 await self.send_message(user.tg_chat_id, text)
+
+    async def notify_meeting(self, text: str, manager_id, admin_ids):
+        """Send a meeting notification to the manager and all admins/leads (deduplicated)."""
+        chat_ids = set()
+        async with async_session() as session:
+            if manager_id:
+                result = await session.execute(select(User.tg_chat_id).where(User.id == manager_id))
+                chat_id = result.scalar_one_or_none()
+                if chat_id:
+                    chat_ids.add(chat_id)
+            if admin_ids:
+                result = await session.execute(
+                    select(User.tg_chat_id).where(User.id.in_(admin_ids), User.tg_chat_id != None)
+                )
+                chat_ids.update(c for c in result.scalars().all() if c)
+        for chat_id in chat_ids:
+            await self.send_message(chat_id, text)
 
 notifier = TelegramNotifier()

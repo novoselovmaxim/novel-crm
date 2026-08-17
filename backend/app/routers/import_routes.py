@@ -3,7 +3,7 @@ import re
 import uuid
 import json
 import asyncio
-import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -305,7 +305,9 @@ async def find_company_by_fields(
         return None
 
     try:
-        result = await db.execute(select(Company).where(or_(*conditions)))
+        result = await db.execute(
+            select(Company).where(or_(*conditions)).limit(2000)
+        )
         candidates = result.scalars().all()
     except Exception:
         return None
@@ -471,7 +473,6 @@ async def run_import(
         "file_path": str(file_path),
         "sheet": req.sheet,
         "mapping": req.mapping,
-        "user_id": str(current_user.id),
         "overwrite": req.overwrite,
     }
 
@@ -512,8 +513,9 @@ async def _run_import_background(task_data: dict):
     file_path = Path(task_data["file_path"])
     sheet = task_data["sheet"]
     mapping: dict[str, str] = task_data["mapping"]
-    user_id = uuid.UUID(task_data["user_id"])
     overwrite = task_data.get("overwrite", False)
+
+    print(f"[IMPORT {source_id}] Starting background import for {file_path}", flush=True)
 
     async_session_local = async_sessionmaker(db_engine, expire_on_commit=False)
 
@@ -523,11 +525,27 @@ async def _run_import_background(task_data: dict):
             source = result.scalar_one()
             source.status = "processing"
             await db.commit()
+            print(f"[IMPORT {source_id}] Status set to processing", flush=True)
 
-            df = pd.read_excel(file_path, sheet_name=sheet, dtype=str)
+            loop = asyncio.get_running_loop()
+            df = await loop.run_in_executor(
+                None, lambda: pd.read_excel(file_path, sheet_name=sheet, dtype=str)
+            )
+
+            columns = list(df.columns)
+            start_time = time.monotonic()
+            MAX_DURATION = 900
+            total = len(df)
 
             for idx, row in df.iterrows():
-                raw_row = {str(col): clean_val(row[col]) for col in df.columns}
+                elapsed = time.monotonic() - start_time
+                if elapsed > MAX_DURATION:
+                    raise TimeoutError(f"Import timed out after {elapsed:.0f}s")
+
+                if idx % 50 == 0:
+                    print(f"[IMPORT {source_id}] Processing row {idx+1}/{total}", flush=True)
+
+                raw_row = {str(col): clean_val(row[col]) for col in columns}
 
                 inn_val = None
                 if "inn" in mapping:
@@ -592,7 +610,9 @@ async def _run_import_background(task_data: dict):
                     )
                     db.add(source_data)
                     source.updated_count = (source.updated_count or 0) + 1
-                elif inn_val:
+                else:
+                    company_inn = inn_val if inn_val else f"TEMP-{uuid.uuid4()}"
+
                     create_kwargs: dict = {}
                     for field, value in mapped_values.items():
                         if value is None:
@@ -611,9 +631,9 @@ async def _run_import_background(task_data: dict):
                             create_kwargs[field] = value
 
                     if "name" not in create_kwargs:
-                        create_kwargs["name"] = f"Company {inn_val}"
+                        create_kwargs["name"] = f"Company {company_inn}"
                     if "inn" not in create_kwargs:
-                        create_kwargs["inn"] = inn_val
+                        create_kwargs["inn"] = company_inn
 
                     company = Company(**create_kwargs)
                     db.add(company)
@@ -627,31 +647,31 @@ async def _run_import_background(task_data: dict):
                     )
                     db.add(source_data)
                     source.added_count = (source.added_count or 0) + 1
-                else:
-                    source.skipped_count = (source.skipped_count or 0) + 1
-                    source_data = ImportSourceData(
-                        source_id=source.id,
-                        company_id=None,
-                        row_data=raw_row,
-                        raw_row_number=idx,
-                    )
-                    db.add(source_data)
 
                 source.processed_rows = idx + 1
 
                 if idx % 100 == 0 and idx > 0:
                     await db.commit()
 
-            file_path.unlink(missing_ok=True)
             source.status = "imported"
+            file_path.unlink(missing_ok=True)
             await db.commit()
+            print(f"[IMPORT {source_id}] Import completed successfully: added={source.added_count} updated={source.updated_count} skipped={source.skipped_count}", flush=True)
 
+        except (TimeoutError, asyncio.TimeoutError, asyncio.CancelledError):
+            print(f"[IMPORT {source_id}] TIMED OUT after 15 minutes", flush=True)
+            source.status = "error"
+            source.error_message = "Import timed out after 15 minutes"
+            await db.commit()
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
+            print(f"[IMPORT {source_id}] ERROR: {tb[:500]}", flush=True)
             source.status = "error"
-            source.error_message = str(e)[:500]
+            source.error_message = tb[:500]
             await db.commit()
+        finally:
+            file_path.unlink(missing_ok=True)
 
 
 def process_mapped_row(

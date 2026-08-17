@@ -5,7 +5,10 @@ from sqlalchemy import select, func
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "7700904608:AAEqNYwQ2pMUXsmidO9P0fkLzvgFHbI4rOY")
+from app.database import async_session
+from app.models import User, Company, CallLog
+
+TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -27,16 +30,76 @@ async def bind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📋 Задачи на сегодня:\n\n"
-        "Функционал в разработке..."
-    )
+    chat_id = update.effective_chat.id
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            await update.message.reply_text("Аккаунт не привязан. Используйте /start с токеном из настроек CRM.")
+            return
+
+        today = date.today()
+        stmt = select(Company).where(
+            Company.assigned_to == user.id,
+            Company.next_call_date == today,
+            Company.is_deleted == False,
+            Company.call_status != "refused"
+        ).order_by(Company.call_status, Company.name)
+        result = await db.execute(stmt)
+        companies = result.scalars().all()
+
+        if not companies:
+            await update.message.reply_text("На сегодня задач нет.")
+            return
+
+        lines = [f"Задач на сегодня: {len(companies)}"]
+        for c in companies:
+            lines.append(f"{c.name} (ИНН {c.inn})")
+        await update.message.reply_text("\n".join(lines))
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📊 Статистика:\n\n"
-        "Функционал в разработке..."
-    )
+    chat_id = update.effective_chat.id
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.tg_chat_id == chat_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            await update.message.reply_text("Аккаунт не привязан.")
+            return
+
+        today = date.today()
+        total = await db.execute(
+            select(func.count(CallLog.id)).where(
+                CallLog.user_id == user.id,
+                func.date(CallLog.called_at) == today
+            )
+        )
+        calls_today = total.scalar() or 0
+
+        assigned = await db.execute(
+            select(func.count(Company.id)).where(
+                Company.assigned_to == user.id,
+                Company.is_deleted == False,
+                Company.call_status != "refused"
+            )
+        )
+        total_assigned = assigned.scalar() or 0
+
+        next_calls = await db.execute(
+            select(func.count(Company.id)).where(
+                Company.assigned_to == user.id,
+                Company.next_call_date == today,
+                Company.is_deleted == False,
+                Company.call_status != "refused"
+            )
+        )
+        tasks_today = next_calls.scalar() or 0
+
+        await update.message.reply_text(
+            f"Статистика:\n\n"
+            f"Звонков сегодня: {calls_today}\n"
+            f"Задач на сегодня: {tasks_today}\n"
+            f"Всего в работе: {total_assigned}"
+        )
 
 def main():
     app = ApplicationBuilder().token(TG_BOT_TOKEN).build()

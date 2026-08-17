@@ -12,7 +12,7 @@ from app.notifications import notifier
 
 logger = logging.getLogger(__name__)
 
-TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "7700904608:AAEqNYwQ2pMUXsmidO9P0fkLzvgFHbI4rOY")
+TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram-webhook"])
 
@@ -204,6 +204,9 @@ async def _polling_loop(bot):
 
 async def start_polling():
     global _polling_task
+    if not TG_BOT_TOKEN:
+        logger.warning("TG_BOT_TOKEN not set, Telegram polling disabled")
+        return
     bot = Bot(token=TG_BOT_TOKEN)
     try:
         await bot.delete_webhook(drop_pending_updates=True)
