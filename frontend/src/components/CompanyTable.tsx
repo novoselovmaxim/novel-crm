@@ -697,7 +697,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
                     <div className="px-3 shrink-0 flex items-center" style={{ width: CHECKBOX_W }}>
                       <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} onClick={e => e.stopPropagation()} className="cursor-pointer accent-accent" />
                     </div>
-                    <div className="px-3 font-medium truncate shrink-0 flex items-center" style={{ width: COL_DEFS[0].w }} title={c.name}>{c.name}</div>
+                    <div className="px-3 font-medium truncate shrink-0 flex items-center gap-2" style={{ width: COL_DEFS[0].w }} title={c.name}>{c.name}{c.call_status === 'refused' && <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-semibold uppercase bg-gray-700/30 text-gray-400 rounded">архив</span>}</div>
                   <div className="px-3 font-mono text-xs truncate shrink-0 flex items-center" style={{ width: COL_DEFS[1].w }} title={c.inn}>{c.inn}</div>
                   <div className="px-3 text-muted truncate shrink-0 flex items-center" style={{ width: COL_DEFS[2].w }} title={c.region || ''}>{c.region || '—'}</div>
                   <div className="px-3 text-muted text-xs truncate shrink-0 flex items-center" style={{ width: COL_DEFS[3].w }} title={c.org_form || ''}>{getOrgForm(c)}</div>

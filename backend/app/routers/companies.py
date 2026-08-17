@@ -83,7 +83,7 @@ async def list_companies(
     if archived:
         query = query.where(Company.call_status == ARCHIVE_STATUS)
         count_query = count_query.where(Company.call_status == ARCHIVE_STATUS)
-    else:
+    elif not search:
         query = query.where(Company.call_status != ARCHIVE_STATUS)
         count_query = count_query.where(Company.call_status != ARCHIVE_STATUS)
     
