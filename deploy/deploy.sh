@@ -56,8 +56,9 @@ echo '--- API ---'
 curl -sk https://novel.maxnov.ru/api/health
 echo ''
 echo '--- Assets ---'
-for a in $(curl -sk https://novel.maxnov.ru/ | grep -o 'assets/index-[^"]*'); do
-  curl -sk -o /dev/null -w "$a: %{http_code}\n" "https://novel.maxnov.ru/$a"
+ASSETS="\$(curl -sk https://novel.maxnov.ru/ | grep -o 'assets/index-[^\"]*')"
+for a in \$ASSETS; do
+  curl -sk -o /dev/null -w "\$a: %{http_code}\n" "https://novel.maxnov.ru/\$a"
 done
 "
 
