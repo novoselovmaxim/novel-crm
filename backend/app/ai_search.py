@@ -1,11 +1,10 @@
 """Multi-source AI company search with LLM extraction.
 
 Flow:
-  1. Tavily search
-  2. DuckDuckGo search (free, no API key needed)
-  3. Scrape top URLs from all sources
-  4. Send all raw data → ZVENO GPT for structured extraction
-  5. Fallback to regex extraction if GPT unavailable
+  1. ZVENO Perplexity sonar-pro-search (works from RF, no external keys)
+  2. Scrape top URLs from result citations
+  3. Send all raw data → ZVENO GPT for structured extraction (fallback)
+  4. Regex extraction as last resort
 """
 import json
 import logging
@@ -21,11 +20,37 @@ logger = logging.getLogger(__name__)
 
 AGGREGATOR_DOMAINS = frozenset({
     "zachestnyibiznes", "list-org", "rusprofile", "sbis", "sbisru",
-    "nalog", "e-nalog", "yandex", "google", "tavily",
+    "nalog", "e-nalog", "yandex", "google",
     "vk", "facebook", "2gis", "spark", "spark-interfax",
     "kontragent", "audit-it", "rusbk", "rsprime", "fedresurs",
     "kontur", "focus-kontur", "focus",
+    "checko", "checko.ru", "companies.rbc", "audit-it",
+    "skyscanner", "aviasales", "tripadvisor", "booking", "airbnb",
+    "ostrovok", "kinopoisk", "wikipedia", "instagram", "tiktok",
+    "youtube", "twitter", "x.com", "avito", "ozon", "wildberries",
+    "aliexpress", "ebay", "apple", "microsoft",
 })
+
+SONAR_MODEL = "perplexity/sonar-pro-search"
+
+KEYS = ("website", "phone", "email", "activity", "description")
+
+SEARCH_SYSTEM_PROMPT = """Ты — поисковый ассистент. Ищи информацию о российской компании по запросу и возвращай данные.
+
+Верни ТОЛЬКО JSON без markdown-обёртки:
+{
+  "website": "официальный сайт компании или пустая строка",
+  "phone": "контактный телефон компании или пустая строка",
+  "email": "контактный email компании или пустая строка",
+  "activity": "основной вид деятельности (30-100 символов) или пустая строка",
+  "description": "краткое описание компании (1-3 предложения) или пустая строка"
+}
+
+Правила:
+1. Сайт — только реальный домен компании (.ru/.com/.рф). Не агрегатор, не каталог, не страница соцсети.
+2. Телефон — только прямой номер компании, не техподдержка агрегатора.
+3. Email — только контактный email компании.
+4. Если не уверен — оставь поле пустым. Лучше пусто, чем неверно."""
 
 EXTRACT_SYSTEM_PROMPT = """Ты — помощник по извлечению структурированных данных о компаниях.
 Из сырых результатов веб-поиска определи точные данные компании.
@@ -47,6 +72,19 @@ EXTRACT_SYSTEM_PROMPT = """Ты — помощник по извлечению �
 5. Если не уверен — оставь поле пустым. Лучше пусто, чем неверно."""
 
 
+def _domain_of(url: str) -> str:
+    """Return bare domain without scheme/path."""
+    if not url:
+        return ""
+    if "://" not in url:
+        url = "//" + url
+    try:
+        from urllib.parse import urlparse
+        return (urlparse(url).netloc or "").lower()
+    except Exception:
+        return url.lower()
+
+
 def _is_company_domain(domain: str) -> bool:
     domain = domain.lower().removeprefix("www.")
     for agg in AGGREGATOR_DOMAINS:
@@ -57,6 +95,25 @@ def _is_company_domain(domain: str) -> bool:
         return False
     tld = parts[-1]
     return tld in ("ru", "com", "net", "org", "su", "рф", "info", "biz", "pro")
+
+
+def _parse_json(content: str) -> Optional[dict]:
+    """Robust JSON parse: strip code fences, fall back to first {...} block."""
+    if not content:
+        return None
+    stripped = re.sub(r"^```(?:json)?\s*", "", content.strip())
+    stripped = re.sub(r"\s*```$", "", stripped).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\{.*\}", stripped, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 def _extract_text_from_html(html: str, max_chars: int = 5000) -> str:
@@ -79,33 +136,54 @@ def _deduplicate_urls(urls: list[str]) -> list[str]:
     return result
 
 
-def _search_tavily(query: str) -> dict:
-    """Run Tavily search. Returns dict with answer + results list."""
-    from tavily import TavilyClient
-    client = TavilyClient(api_key=settings.tavily_api_key)
-    return client.search(
-        query=query,
-        search_depth="advanced",
-        max_results=5,
-        include_answer=True,
-    )
+async def _search_zveno_perplexity(query: str, timeout: int = 90) -> dict:
+    """Search via ZVENO Perplexity sonar-pro-search.
+    Returns {"answer": str, "results": [{url, title, content}]}."""
+    if not settings.zveno_api_key:
+        logger.info("ZVENO not configured, skipping sonar search")
+        return {"answer": "", "results": []}
 
-
-def _search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
-    """Run DuckDuckGo search. Returns list of {title, href, body}."""
     try:
-        from duckduckgo_search import DDGS
-        results = []
-        for r in DDGS().text(query, max_results=max_results):
-            results.append({
-                "title": r.get("title", ""),
-                "href": r.get("href", ""),
-                "body": r.get("body", ""),
-            })
-        return results
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            payload = {
+                "model": SONAR_MODEL,
+                "messages": [
+                    {"role": "system", "content": SEARCH_SYSTEM_PROMPT},
+                    {"role": "user", "content": query},
+                ],
+                "temperature": 0.05,
+            }
+            resp = await c.post(
+                f"{settings.zveno_base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.zveno_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            if resp.status_code != 200:
+                logger.warning("Sonar search error %s: %s", resp.status_code, resp.text[:300])
+                return {"answer": "", "results": []}
+            data = resp.json()
+            if "choices" not in data or not data["choices"]:
+                logger.warning("Sonar search returned no choices: %s", json.dumps(data, ensure_ascii=False)[:300])
+                return {"answer": "", "results": []}
+            msg = data["choices"][0].get("message", {})
+            answer = msg.get("content", "") or ""
+            results = []
+            for ann in msg.get("annotations") or []:
+                cit = (ann or {}).get("url_citation") or {}
+                url = cit.get("url", "")
+                if url:
+                    results.append({
+                        "url": url,
+                        "title": cit.get("title", ""),
+                        "content": "",
+                    })
+            return {"answer": answer, "results": results}
     except Exception:
-        logger.exception("DuckDuckGo search failed")
-        return []
+        logger.exception("Sonar search failed")
+        return {"answer": "", "results": []}
 
 
 async def _scrape_url(url: str, timeout: int = 10) -> str:
@@ -145,10 +223,12 @@ async def _extract_with_gpt(raw_text: str) -> dict:
                 json=payload,
             )
             data = resp.json()
-            if "choices" in data:
+            if "choices" in data and data["choices"]:
                 content = data["choices"][0]["message"]["content"].strip()
-                content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                return json.loads(content)
+                parsed = _parse_json(content)
+                if parsed is not None:
+                    return parsed
+                logger.warning("GPT extraction returned non-JSON: %s", content[:200])
             else:
                 logger.warning("GPT extraction failed: %s", json.dumps(data, ensure_ascii=False)[:300])
     except Exception:
@@ -179,48 +259,39 @@ def _extract_with_regex(texts: list[str]) -> dict:
 
 
 async def search_company_info(name: str, inn: str = "", website: str = "") -> dict:
-    """Multi-source search with GPT extraction."""
+    """Multi-source search with LLM extraction (ZVENO sonar primary)."""
 
-    # — 1. Tavily search —
+    # — 1. Sonar search —
+    queries = [f"{name} {inn} официальный сайт телефон email деятельность"]
+    if website:
+        queries.insert(0, f"{name} {inn} {website} официальный сайт контакты деятельность")
+
     answer = ""
-    tavily_texts: list[str] = []
-    urls: list[str] = []
-    sources: list[dict] = []
+    results: list[dict] = []
+    seen_urls = set()
+    for q in queries:
+        sr = await _search_zveno_perplexity(q)
+        if sr.get("answer"):
+            answer = sr["answer"]
+        for r in sr.get("results", []):
+            url = r.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                results.append(r)
+        if answer:
+            break
 
-    if settings.tavily_api_key:
-        try:
-            query = f"{name} {inn} компания официальный сайт деятельность"
-            sr = _search_tavily(query)
-            answer = sr.get("answer", "")
-            for item in sr.get("results", []):
-                url = item.get("url", "")
-                content = item.get("content", "")
-                if url:
-                    urls.append(url)
-                    sources.append({"url": url, "title": item.get("title", ""), "snippet": content[:300]})
-                if content:
-                    tavily_texts.append(f"{item.get('title', '')}: {content[:500]}")
-        except Exception:
-            logger.exception("Tavily search failed")
+    sources = [
+        {"url": r["url"], "title": r.get("title", ""), "snippet": ""}
+        for r in results[:8]
+    ]
 
-    # — 2. DuckDuckGo search —
-    ddg_texts: list[str] = []
-    try:
-        query = f"{name} {inn} сайт контакты"
-        ddg_results = _search_duckduckgo(query)
-        for r in ddg_results:
-            url = r.get("href", "")
-            body = r.get("body", "")
-            if url:
-                urls.append(url)
-            if body:
-                ddg_texts.append(f"{r.get('title', '')}: {body[:500]}")
-    except Exception:
-        logger.exception("DuckDuckGo search failed")
+    # — 2. Try structured JSON from sonar —
+    extracted: dict = _parse_json(answer) or {}
 
     # — 3. Deduplicate URLs and pick candidates —
-    urls = _deduplicate_urls(urls)
-    company_candidates = [u for u in urls if _is_company_domain(re.sub(r"https?://", "", u).split("/")[0])]
+    urls = _deduplicate_urls([r["url"] for r in results])
+    company_candidates = [u for u in urls if _is_company_domain(_domain_of(u))]
     first_party_url = company_candidates[0] if company_candidates else urls[0] if urls else website or ""
 
     # — 4. Scrape top unique URLs (max 3) —
@@ -228,13 +299,13 @@ async def search_company_info(name: str, inn: str = "", website: str = "") -> di
     to_scrape = []
     seen_domains = set()
     for url in company_candidates[:5]:
-        domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
+        domain = _domain_of(url)
         if domain not in seen_domains and len(to_scrape) < 3:
             seen_domains.add(domain)
             to_scrape.append(url)
     if not to_scrape:
         for url in urls[:3]:
-            domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
+            domain = _domain_of(url)
             if domain not in seen_domains:
                 seen_domains.add(domain)
                 to_scrape.append(url)
@@ -245,30 +316,30 @@ async def search_company_info(name: str, inn: str = "", website: str = "") -> di
         if isinstance(t, str) and t:
             scrape_texts.append(t)
 
-    # — 5. Build raw text for GPT —
+    # — 5. Build raw text for GPT (fallback enrichment) —
     raw_parts = []
     if answer:
         raw_parts.append(f"=== AI summary ===\n{answer}")
-    if tavily_texts:
-        raw_parts.append(f"=== Tavily results ===\n" + "\n".join(tavily_texts[:3]))
-    if ddg_texts:
-        raw_parts.append(f"=== DuckDuckGo results ===\n" + "\n".join(ddg_texts[:3]))
     if scrape_texts:
         raw_parts.append(f"=== Website content ===\n" + "\n\n".join(scrape_texts[:2]))
     raw_text = "\n\n".join(raw_parts)
 
-    # — 6. Try GPT extraction —
-    extracted = await _extract_with_gpt(raw_text)
+    # — 6. Fallback: GPT extraction if sonar gave nothing useful —
+    if not extracted or not any(extracted.get(k) for k in KEYS):
+        gpt_extracted = await _extract_with_gpt(raw_text)
+        for key in KEYS:
+            if not extracted.get(key):
+                extracted[key] = gpt_extracted.get(key, "")
 
-    # — 7. Fallback: regex extraction —
-    if not extracted or not extracted.get("phone") and not extracted.get("email"):
-        regex_result = _extract_with_regex(tavily_texts + ddg_texts + scrape_texts)
+    # — 7. Last resort: regex extraction —
+    if not any(extracted.get(k) for k in ("phone", "email", "activity")):
+        regex_result = _extract_with_regex(scrape_texts)
         for key in ("phone", "email", "activity"):
             if not extracted.get(key):
                 extracted[key] = regex_result.get(key, "")
 
     # — 8. Build result —
-    first_party_domain = re.sub(r"https?://(www\.)?", "", first_party_url).split("/")[0].lower()
+    first_party_domain = _domain_of(first_party_url)
     if not _is_company_domain(first_party_domain):
         first_party_url = website or ""
 

@@ -72,30 +72,27 @@ async def qualify_company(
         f"Предмет снабжения: {company.supply_subject or '—'}",
     ]
 
-    # — 2. Search via Tavily —
+    # — 2. Search via ZVENO sonar —
     search_results = []
     ved_keywords = [
         f"{company.name} {company.inn} ВЭД импорт экспорт",
         f"{company.name} {company.inn} внешнеэкономическая деятельность валютные платежи",
     ]
 
-    if settings.tavily_api_key:
+    if settings.zveno_api_key:
         try:
-            from tavily import TavilyClient
-            client = TavilyClient(api_key=settings.tavily_api_key)
+            from .ai_search import _search_zveno_perplexity
             for q in ved_keywords:
-                sr = client.search(
-                    query=q,
-                    search_depth="advanced",
-                    max_results=3,
-                    include_answer=False,
-                )
-                for item in sr.get("results", []):
-                    snippet = f"{item.get('title', '')}: {item.get('content', '')[:300]}"
+                sr = await _search_zveno_perplexity(q)
+                answer = sr.get("answer", "")
+                if answer:
+                    search_results.append(f"Поиск: {answer[:600]}")
+                for r in sr.get("results", []):
+                    snippet = f"{r.get('title', '')}: {r.get('url', '')}"
                     if snippet not in search_results:
                         search_results.append(snippet)
         except Exception:
-            logger.exception("Tavily search failed for qualification")
+            logger.exception("Sonar search failed for qualification")
 
     company_text = "\n".join(company_data_lines)
     search_text = "\n".join(search_results[:5]) if search_results else "Результаты поиска недоступны"

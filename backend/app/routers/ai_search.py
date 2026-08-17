@@ -1,4 +1,4 @@
-"""AI search endpoints — enrich company data via Tavily."""
+"""AI search endpoints — enrich company data via ZVENO sonar + GPT."""
 import copy
 import json
 import logging
@@ -29,8 +29,8 @@ async def ai_search_company(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not settings.tavily_api_key:
-        raise HTTPException(status_code=400, detail="Tavily API key not configured")
+    if not settings.zveno_api_key:
+        raise HTTPException(status_code=400, detail="ZVENO API key not configured")
 
     result = await db.execute(
         select(Company).where(Company.id == company_id, Company.is_deleted == False)

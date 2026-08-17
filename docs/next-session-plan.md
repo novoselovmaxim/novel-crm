@@ -107,3 +107,33 @@ docker compose up -d
 | `frontend/src/pages/Dashboard.tsx` | +"Настройки" button |
 | `frontend/src/components/CompanyCard.tsx` | Fix: status buttons, LPR fields; +TimeZoneBlock |
 | `frontend/src/utils/timezone.ts` | New: region to UTC mapping |
+
+---
+
+## 2026-08-17 — AI Search: ZVENO `perplexity/sonar-pro-search` (Tavily removed)
+
+### Почему
+- **Tavily API** отклоняет запросы из РФ: `403 Forbidden` (ключ валиден, блокировка по гео). Проверено напрямую.
+- **DuckDuckGo** (`duckduckgo-search==8.1.1`) перестал работать: `DDGS().text()` устарел, таймаут на bing.com.
+- Результат: AI-поиск возвращал мусор (`sources: 0`, skyscanner и т.п.).
+
+### Что сделано
+- **`backend/app/ai_search.py`** — переписан конвейер:
+  - Удалены `_search_tavily`, `_search_duckduckgo`.
+  - Добавлен `_search_zveno_perplexity(query)` → POST `{zveno_base_url}/chat/completions` с `model="perplexity/sonar-pro-search"` (константа `SONAR_MODEL`), timeout 90s.
+  - `search_company_info`: sonar возвращает `answer` (JSON) + `annotations[].url_citation` → `sources` (наконец-то наполняется: 8 источников/компания).
+  - Устойчивость: `_parse_json` (срез кода-обёртки и `{...}`), фолбэк-цепочка sonar→GPT (`_extract_with_gpt`, модель `settings.llm_model`=`openai/gpt-4o-mini`)→regex→scraping.
+  - `_domain_of` выделен из URL-парсинга; `_is_company_domain` использует его.
+  - Расширен `AGGREGATOR_DOMAINS`: +checko, companies.rbc, skyscanner, aviasales, tripadvisor, booking, airbnb, ostrovok, kinopoisk, wikipedia, соцсети, ozon, wildberries и др.
+- **`backend/app/ai_qualify.py`** — квалификация (ВЭД) переведена с Tavily на `_search_zveno_perplexity`.
+- **`backend/app/routers/ai_search.py`** — проверка ключа: `tavily_api_key` → `zveno_api_key`. API-контракт ответа не менялся: `suggestions`, `ai_summary`, `sources`, `company`, `has_pending`.
+- **`backend/requirements.txt`** — удалены `tavily-python==0.5.1` и `duckduckgo-search>=8.0.0` (мертвы).
+- **`frontend`** — не менялся; `sources` уже рендерились в `CompanyCard.tsx`.
+
+### Проверено вживую (после деплоя)
+- АТИС → `atis-auto.ru`, `+7 (495) 781-15-24`, `info@atis-auto.ru`, 8 sources, ~5s.
+- ВИП-СИСТЕМЫ / ВИЛИТЕК → сайт/телефон/деятельность/описание, 8 sources.
+- Квалификация ВИЛИТЕК → score 75, `has_ved: true`.
+
+### Деплой
+Локально → scp файлов на VPS (`/opt/novel-crm/backend/app/`) → `docker compose build backend && up -d`. ВНИМАНИЕ: `scp` с несколькими файлами срезает пути — копировать каждый файл отдельно. Запись об изменениях: этот файл. Graph коммитить **не** нужно (см. `.gitignore`).
