@@ -5,7 +5,7 @@ echo "🚀 Deploying Novel CRM to VPS..."
 
 VPS_USER="root"
 VPS_HOST="80.87.111.142"
-VPS_KEY="/tmp/novel_vps_key"
+VPS_KEY="${VPS_KEY:-$HOME/.ssh/novel_server_key}"
 VPS_DIR="/opt/novel-crm"
 SSH_CMD="ssh -i $VPS_KEY -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST"
 
