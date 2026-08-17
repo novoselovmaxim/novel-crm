@@ -301,6 +301,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
   const [sortOrder, setSortOrder] = useState(() => loadSavedState('sortOrder', 'desc'))
   const [orgFormFilter, setOrgFormFilter] = useState(() => loadSavedState('orgFormFilter', ''))
   const [activityFilter, setActivityFilter] = useState(() => loadSavedState('activityFilter', ''))
+  const [activityDate, setActivityDate] = useState(() => loadSavedState('activityDate', ''))
   const [orgForms, setOrgForms] = useState<string[]>([])
   const [activities, setActivities] = useState<string[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -370,7 +371,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
     const fetchCompanies = async () => {
       setLoading(true)
       try {
-        const params: Record<string, any> = { page, page_size: pageSize, search, status: statusFilter || undefined, pipeline_stage: pipelineFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined, org_form: orgFormFilter || undefined, activity: activityFilter || undefined }
+        const params: Record<string, any> = { page, page_size: pageSize, search, status: statusFilter || undefined, pipeline_stage: pipelineFilter || undefined, region: regionFilter || undefined, assigned_to: managerFilter || undefined, archived, source: sourceFilter || undefined, org_form: orgFormFilter || undefined, activity: activityFilter || undefined, activity_date: activityDate || undefined }
         if (sortBy) { params.sort_by = sortBy; params.sort_order = sortOrder }
         const { data } = await api.get('/companies', { params })
         setCompanies(data.items)
@@ -383,18 +384,18 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
       }
     }
     fetchCompanies()
-  }, [page, pageSize, search, statusFilter, pipelineFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, refreshKey])
+  }, [page, pageSize, search, statusFilter, pipelineFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, activityDate, refreshKey])
 
   useEffect(() => {
     const timer = setTimeout(() => {
       saveTableState({
         searchInput, search, statusFilter, regionFilter, managerFilter,
         archived, sourceFilter, sortBy, sortOrder, orgFormFilter,
-        activityFilter, pageSize
+        activityFilter, activityDate, pageSize
       })
     }, 1000)
     return () => clearTimeout(timer)
-  }, [searchInput, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, pageSize])
+  }, [searchInput, search, statusFilter, regionFilter, managerFilter, archived, sourceFilter, sortBy, sortOrder, orgFormFilter, activityFilter, activityDate, pageSize])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -423,6 +424,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
     setSourceFilter('')
     setOrgFormFilter('')
     setActivityFilter('')
+    setActivityDate('')
     setSortBy('')
     setSortOrder('desc')
     setPage(1)
@@ -449,7 +451,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
     setPage(1)
   }
 
-  const hasFilters = searchInput || statusFilter || regionFilter || managerFilter || sourceFilter || orgFormFilter || activityFilter || sortBy
+  const hasFilters = searchInput || statusFilter || regionFilter || managerFilter || sourceFilter || orgFormFilter || activityFilter || activityDate || sortBy
   const totalPages = Math.ceil(total / pageSize)
 
   if (loading) return <div className="flex items-center justify-center h-64">Загрузка...</div>
@@ -490,6 +492,13 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
             ))}
           </select>
           <SearchableFilter value={activityFilter} onChange={(v) => { setActivityFilter(v); setPage(1) }} items={activities} placeholder="Деятельность..." />
+          <input
+            type="date"
+            value={activityDate}
+            onChange={(e) => { setActivityDate(e.target.value); setPage(1) }}
+            className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            title="Активность в дату (звонки, письма, встречи)"
+          />
           {sources.length > 0 && (
             <div className="flex items-center gap-1">
               <select

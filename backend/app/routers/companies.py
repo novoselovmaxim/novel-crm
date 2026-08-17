@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, distinct, case
+from sqlalchemy import select, func, or_, and_, distinct, case
 from typing import Optional
+from datetime import date
 import csv
 import io
 import uuid
 import asyncio
 
 from ..database import get_db, settings
-from ..models import User, Company, EmailCommunication, CallLog, AuditLog, ImportSourceData, CompanyComment, Meeting
+from ..models import User, Company, EmailCommunication, CallLog, AuditLog, ImportSourceData, CompanyComment, Meeting, PipelineLog, FollowUp
 from ..schemas import CompanyCreate, CompanyUpdate, CompanyResponse, CompanyListResponse, CallLogCreate, CallLogResponse, AssignRequest, StatusUpdateRequest, BulkStatusRequest, BulkStatusResponse, BulkAssignRequest, BulkAssignResponse, ExportRequest, MeetingCreate, CommentCreate, CommentResponse
 from ..auth import get_current_user, require_admin, require_admin_or_lead
 from ..notifications import notifier
@@ -70,6 +71,7 @@ async def list_companies(
     source: Optional[str] = Query(None, description="Filter by import source id"),
     org_form: Optional[str] = Query(None, description="Filter by OPF"),
     activity: Optional[str] = Query(None, description="Filter by activity_main"),
+    activity_date: Optional[date] = Query(None, description="Show companies with activity (calls, opens, meetings) on this date"),
     sort_by: Optional[str] = Query(None, description="Comma-separated sort fields: revenue, name"),
     sort_order: Optional[str] = Query("desc", description="Comma-separated sort orders: asc, desc"),
     current_user: User = Depends(get_current_user),
@@ -94,7 +96,11 @@ async def list_companies(
             Company.name.ilike(f"%{search}%"),
             Company.inn.ilike(f"%{search}%"),
             Company.phone.ilike(f"%{search}%"),
-            Company.email.ilike(f"%{search}%")
+            Company.email.ilike(f"%{search}%"),
+            Company.director.ilike(f"%{search}%"),
+            Company.fin_director.ilike(f"%{search}%"),
+            Company.contact_person.ilike(f"%{search}%"),
+            Company.contact_person_full.ilike(f"%{search}%")
         )
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
@@ -131,6 +137,23 @@ async def list_companies(
     if activity:
         query = query.where(Company.activity_main == activity)
         count_query = count_query.where(Company.activity_main == activity)
+
+    if activity_date:
+        activity_subq = (
+            select(CallLog.company_id).where(func.date(CallLog.called_at) == activity_date)
+            .union(
+                select(Meeting.company_id).where(
+                    or_(func.date(Meeting.created_at) == activity_date, Meeting.date == activity_date)
+                ),
+                select(EmailCommunication.company_id).where(func.date(EmailCommunication.sent_at) == activity_date),
+                select(EmailCommunication.company_id).where(func.date(EmailCommunication.opened_at) == activity_date),
+                select(CompanyComment.company_id).where(func.date(CompanyComment.created_at) == activity_date),
+                select(PipelineLog.company_id).where(func.date(PipelineLog.changed_at) == activity_date),
+                select(FollowUp.company_id).where(func.date(FollowUp.sent_at) == activity_date),
+            )
+        )
+        query = query.where(Company.id.in_(activity_subq))
+        count_query = count_query.where(Company.id.in_(activity_subq))
     
     SORTABLE = {"revenue": Company.revenue, "name": Company.name}
     if sort_by:
