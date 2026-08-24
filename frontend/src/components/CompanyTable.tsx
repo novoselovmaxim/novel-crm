@@ -814,7 +814,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
       {/* Company Card - right side */}
       {selectedCompany && (
         <div className="shrink-0 border-l border-muted/10">
-          <CompanyCard company={selectedCompany} onClose={() => { setSelectedCompany(null); onCompanyClose?.() }} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} />
+          <CompanyCard key={selectedCompany.id} company={selectedCompany} onClose={() => { setSelectedCompany(null); onCompanyClose?.() }} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} />
         </div>
       )}
 
