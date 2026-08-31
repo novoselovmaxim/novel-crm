@@ -15,8 +15,11 @@ const STATUSES = [
   { value: 'in_progress', label: 'В работе', color: 'bg-yellow-500' },
   { value: 'interested', label: 'Заинтересован', color: 'bg-green-500' },
   { value: 'thinking', label: 'Думают', color: 'bg-teal-500' },
+  { value: 'meeting', label: 'Встреча назначена', color: 'bg-purple-500' },
   { value: 'refused', label: 'Отказ', color: 'bg-gray-600' },
 ]
+
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUSES.map(s => [s.value, s.label]))
 
 function Field({ label, value, field, companyId, rawValue, onUpdate, onError, highlight }: {
   label: string
@@ -522,7 +525,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
                 {callLogs.map(cl => (
                   <div key={cl.id} className="text-xs border-l-2 border-muted/20 pl-2 group">
                     <div className="flex items-center gap-1">
-                      <span className="text-muted">{new Date(cl.called_at).toLocaleString('ru-RU')} — {cl.call_status}</span>
+                      <span className="text-muted">{new Date(cl.called_at).toLocaleString('ru-RU')} — {STATUS_LABEL[cl.call_status] || cl.call_status}</span>
                       {(currentUser?.role === 'admin' || currentUser?.role === 'lead' || cl.user_id === currentUser?.id) && (
                         <button
                           onClick={async () => {
