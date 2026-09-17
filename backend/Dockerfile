@@ -9,6 +9,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN scrapling install || true
 COPY backend/migrate_pipeline.py .
 COPY backend/app ./app
 COPY --from=frontend-builder /frontend/dist /app/static
