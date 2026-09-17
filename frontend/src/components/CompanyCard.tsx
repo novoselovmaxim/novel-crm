@@ -4,6 +4,7 @@ import { Company, User, Comment, CallLog, EmailCommunication, FollowUp } from '.
 import { useAuth } from '../store/auth'
 import CalendarPicker from './CalendarPicker'
 import CalendarModal from './CalendarModal'
+import ResearchModal from './ResearchModal'
 import StatusBadge from './StatusBadge'
 import { getClientTimeInfo } from '../utils/timezone'
 
@@ -251,6 +252,7 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [fupError, setFupError] = useState('')
   const [fupSent, setFupSent] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [showResearchModal, setShowResearchModal] = useState(false)
 
   useEffect(() => {
     api.get(`/import/data`, { params: { company_id: company.id } }).then(({ data }) => {
@@ -1137,6 +1139,12 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
               >
                 {qualLoading ? 'Анализ...' : '⚡ Квалификация'}
               </button>
+              <button
+                onClick={() => setShowResearchModal(true)}
+                className="px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 text-sm rounded-md border border-cyan-600/30"
+              >
+                🔬 Исследование
+              </button>
             </div>
 
             {/* AI auto-saved */}
@@ -1291,6 +1299,20 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
 
       {showCalendarBook && (
         <CalendarModal onClose={() => setShowCalendarBook(false)} preselectedCompanyId={company.id} onBooked={handleBookedSlot} onMeetingClick={(companyId) => { setShowCalendarBook(false); onNavigateToCompany?.(companyId) }} />
+      )}
+
+      {showResearchModal && (
+        <ResearchModal
+          company={company}
+          onClose={() => setShowResearchModal(false)}
+          onApplySuggestion={(field, value) => {
+            setCompany(prev => ({
+              ...prev,
+              [field]: value,
+            }))
+          }}
+          onUpdateCompany={(data) => setCompany(prev => ({ ...prev, ...data }))}
+        />
       )}
     </div>
   )

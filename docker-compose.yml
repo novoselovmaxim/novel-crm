@@ -40,6 +40,8 @@ services:
       ZVENO_API_KEY: ${ZVENO_API_KEY}
       ZVENO_BASE_URL: ${ZVENO_BASE_URL:-https://api.zveno.ai/v1}
       LLM_MODEL: ${LLM_MODEL:-openai/gpt-4o-mini}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      EXA_API_KEY: ${EXA_API_KEY:-}
     ports:
       - "3020:8000"
     depends_on:
