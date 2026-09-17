@@ -1,5 +1,6 @@
 """Research endpoints — multi-source company investigation."""
 import copy
+import json
 import logging
 import uuid
 
@@ -21,6 +22,15 @@ router = APIRouter(prefix="/api/research", tags=["research"])
 class ResearchRequest(BaseModel):
     sources: list[str] = ["brave", "exa", "zveno"]
     custom_query: str = ""
+
+
+class FollowUpRequest(BaseModel):
+    question: str
+    context: str = ""
+
+
+class SaveResearchRequest(BaseModel):
+    suggestions: dict
 
 
 @router.post("/{company_id}")
@@ -148,5 +158,112 @@ async def research_company_endpoint(
         "scraped_texts": research.get("scraped_texts", []),
         "all_urls": research.get("all_urls", []),
         "raw_text_preview": research.get("raw_text_preview", ""),
+        "company": CompanyResponse.model_validate(company).model_dump(),
+    }
+
+
+@router.post("/{company_id}/follow-up")
+async def research_follow_up(
+    company_id: uuid.UUID,
+    request: FollowUpRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Answer a follow-up question about company research results using GPT."""
+    result = await db.execute(
+        select(Company).where(Company.id == company_id, Company.is_deleted == False)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    context = request.context or f"Компания: {company.name}, ИНН: {company.inn}"
+    if company.activity_main:
+        context += f"\nДеятельность: {company.activity_main}"
+    if company.description:
+        context += f"\nОписание: {company.description}"
+
+    prompt = f"""Ты аналитик по компаниям. Ответь на вопрос, опираясь на контекст.
+
+Контекст:
+{context}
+
+Вопрос: {request.question}
+
+Ответь кратко и по существу на русском языке. Если данных недостаточно — скажи об этом."""
+
+    try:
+        from ..ai_search import _extract_with_gpt
+        # Use GPT to generate follow-up answer
+        client = None
+        try:
+            import openai
+            client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+        except Exception:
+            pass
+
+        if client:
+            resp = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0.3,
+            )
+            answer = resp.choices[0].message.content or "Не удалось получить ответ"
+        else:
+            answer = "OpenAI API key не настроен"
+
+        return {"answer": answer, "question": request.question}
+    except Exception as e:
+        logger.exception("Follow-up failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{company_id}/save")
+async def save_research_data(
+    company_id: uuid.UUID,
+    request: SaveResearchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save research data to company fields."""
+    result = await db.execute(
+        select(Company).where(Company.id == company_id, Company.is_deleted == False)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    updated_fields = []
+    for field, value in request.suggestions.items():
+        if not value:
+            continue
+        current_val = getattr(company, field, None)
+        if field == "phone" and current_val:
+            if value not in current_val:
+                setattr(company, field, f"{current_val}, {value}")
+                updated_fields.append(field)
+        elif field == "email" and current_val:
+            if value.lower() not in current_val.lower():
+                setattr(company, field, f"{current_val}, {value}")
+                updated_fields.append(field)
+        else:
+            if str(current_val or "").strip() != str(value).strip():
+                setattr(company, field, value)
+                updated_fields.append(field)
+
+    if updated_fields:
+        # Clear pending suggestions for saved fields
+        ai_suggestions = copy.deepcopy(company.ai_suggestions) if company.ai_suggestions else {}
+        pending = ai_suggestions.get("pending", {})
+        for field in updated_fields:
+            pending.pop(field, None)
+        ai_suggestions["pending"] = pending
+        company.ai_suggestions = ai_suggestions
+        await db.commit()
+        await db.refresh(company)
+
+    return {
+        "updated_fields": updated_fields,
         "company": CompanyResponse.model_validate(company).model_dump(),
     }

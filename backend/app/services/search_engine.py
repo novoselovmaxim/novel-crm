@@ -82,6 +82,8 @@ async def research_company(
                 if url:
                     all_urls.append(url)
         elif source_name in ("brave", "exa"):
+            if isinstance(result, dict) and result.get("blocked"):
+                logger.info("Source %s blocked by Cloudflare — skipping", source_name)
             for r in result.get("results", []):
                 url = r.get("url", "")
                 if url:
@@ -156,6 +158,13 @@ async def research_company(
                 "name": source_name,
                 "status": "error",
                 "error": str(result)[:200],
+                "count": 0,
+            })
+        elif isinstance(result, dict) and result.get("blocked"):
+            sources_info.append({
+                "name": source_name,
+                "status": "blocked",
+                "error": "Cloudflare block — IP заблокирован. Используйте Brave.",
                 "count": 0,
             })
         else:
