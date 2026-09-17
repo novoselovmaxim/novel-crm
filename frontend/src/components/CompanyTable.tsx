@@ -531,19 +531,18 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
               )}
             </div>
           )}
-          {isAdminOrLead && managers.map(m => (
-            <button
-              key={m.id}
-              onClick={() => { setManagerFilter(managerFilter === m.id ? '' : m.id); setPage(1) }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                managerFilter === m.id
-                  ? 'bg-accent text-white'
-                  : 'bg-surface text-muted hover:text-text border border-muted/20'
-              }`}
+          {isAdminOrLead && (
+            <select
+              value={managerFilter}
+              onChange={(e) => { setManagerFilter(e.target.value); setPage(1) }}
+              className="px-3 py-1.5 bg-bg border border-muted/20 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              {m.name || m.email}
-            </button>
-          ))}
+              <option value="">Все менеджеры</option>
+              {managers.map(m => (
+                <option key={m.id} value={m.id}>{m.name || m.email}</option>
+              ))}
+            </select>
+          )}
           {hasFilters && (
             <button onClick={clearFilters} className="px-3 py-1.5 text-sm text-accent hover:underline">
               Сбросить
