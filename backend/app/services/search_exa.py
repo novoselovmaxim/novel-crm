@@ -57,6 +57,9 @@ async def search_exa_company(
                     ],
                 },
             )
+            if resp.status_code == 403:
+                logger.warning("Exa blocked by Cloudflare (VPS IP). Add proxy or use Brave.")
+                return {"results": [], "query": search_query, "error": "blocked", "blocked": True}
             if resp.status_code != 200:
                 logger.warning("Exa search error %s: %s", resp.status_code, resp.text[:200])
                 return {"results": [], "query": search_query, "error": resp.text[:200]}
