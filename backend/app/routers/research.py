@@ -165,7 +165,7 @@ async def research_follow_up(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Answer a follow-up question about company research results using OpenRouter GPT."""
+    """Answer a follow-up question about company research results."""
     result = await db.execute(
         select(Company).where(Company.id == company_id, Company.is_deleted == False)
     )
@@ -179,6 +179,14 @@ async def research_follow_up(
     if company.description:
         context += f"\nОписание: {company.description}"
 
+    if not settings.openrouter_api_key:
+        return {
+            "answer": "AI-функция недоступна (OpenRouter заблокирован в РФ). "
+                      "Используйте данные из исследования: Brave результаты, Exa, скрейпинг сайтов. "
+                      "Вопрос: " + request.question,
+            "question": request.question
+        }
+
     prompt = f"""Ты аналитик по компаниям. Ответь на вопрос, опираясь на контекст.
 
 Контекст:
@@ -187,9 +195,6 @@ async def research_follow_up(
 Вопрос: {request.question}
 
 Ответь кратко и по существу на русском языке. Если данных недостаточно -- скажи об этом."""
-
-    if not settings.openrouter_api_key:
-        return {"answer": "OpenRouter API key не настроен", "question": request.question}
 
     try:
         import httpx

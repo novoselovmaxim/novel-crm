@@ -1,9 +1,11 @@
-"""Lead qualification -- does this company do ВЭД?"""
+"""Lead qualification -- does this company do ВЭД?
+
+Works without LLM by analyzing company data fields.
+"""
 import json
 import logging
 from typing import Optional
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import settings
@@ -11,67 +13,33 @@ from .models import Company
 
 logger = logging.getLogger(__name__)
 
-QUALIFY_SYSTEM_PROMPT = """Ты — эксперт по ВЭД (внешнеэкономической деятельности). 
-Проанализируй компанию и определи, занимается ли она внешнеэкономической деятельностью, 
-является ли импортёром или экспортёром, работает ли с зарубежными партнёрами, 
-осуществляет ли валютные платежи.
+VED_KEYWORDS_IMPORT = [
+    "импорт", "import", "ввоза", "закупк", "покупк за границ",
+    "поставк из", "закупаю", "ввожу", "таможен", "customs",
+    "форекс", "валютн", "перевод за границ", "swift", "сепа",
+]
 
-Оцени пригодность компании как потенциального клиента для сервиса международных 
-валютных переводов (аналог Wise/Revolut для бизнеса в РФ).
+VED_KEYWORDS_EXPORT = [
+    "экспорт", "export", "вывоз", "продаж за границ", "поставк за границ",
+    "клиент за границ", "покупател за границ", "международн",
+    "форекс", "валютн", "перевод из за границ",
+]
 
-Ответь строго в формате JSON без markdown-обёртки:
-{
-  "score": 0-100,
-  "has_ved": true/false/null,
-  "is_importer": true/false/null,
-  "is_exporter": true/false/null,
-  "has_foreign_payments": true/false/null,
-  "has_international_partners": true/false/null,
-  "reasoning": "Подробное объяснение вывода на русском",
-  "evidence": ["Короткий факт 1", "Короткий факт 2"],
-  "needs_review": true/false
-}
-
-Где:
-- score -- общая оценка likelihood (0 = точно не ВЭД, 100 = идеальный клиент)
-- has_ved -- занимается ли ВЭД в принципе
-- needs_review -- true если данных недостаточно и нужно вмешательство человека
-- evidence -- конкретные факты из данных компании или поиска
-"""
-
-
-async def _search_brave_ved(name: str, inn: str, query: str) -> list[str]:
-    """Search Brave for VED-related info."""
-    if not settings.brave_api_key:
-        logger.info("Brave API key not configured, skipping VED search")
-        return []
-
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(
-                "https://api.search.brave.com/res/v1/web/search",
-                headers={"X-Subscription-Token": settings.brave_api_key},
-                params={"q": query, "count": 5, "search_lang": "ru", "country": "ru"},
-            )
-            if resp.status_code != 200:
-                logger.warning("Brave VED search error %s: %s", resp.status_code, resp.text[:300])
-                return []
-            data = resp.json()
-            results = []
-            for r in data.get("web", {}).get("results", []):
-                snippet = f"{r.get('title', '')}: {r.get('description', '')} ({r.get('url', '')})"
-                results.append(snippet)
-            return results
-    except Exception:
-        logger.exception("Brave VED search failed")
-        return []
+VED_KEYWORDS_ACTIVITY = [
+    "внешнеэкономическ", "вэд", "международн", "foreign trade",
+    "таможен", "брокер", "переводчик", "логистик", "перевозк",
+    "форекс", "депозитар", "банк", "платежн", "payment",
+]
 
 
 async def qualify_company(
     company: Company,
     db: AsyncSession,
 ) -> dict:
-    """Run qualification: gather data + search + LLM analysis."""
+    """Run qualification by analyzing company data fields.
+    
+    No external LLM needed - uses heuristics on existing data.
+    """
     result = {
         "score": 0,
         "has_ved": None,
@@ -84,77 +52,105 @@ async def qualify_company(
         "needs_review": True,
     }
 
-    # 1. Gather existing company data
-    company_data_lines = [
-        f"Название: {company.name}",
-        f"ИНН: {company.inn}",
-        f"Регион: {company.region}",
-        f"Основной вид деятельности: {company.activity_main or '—'}",
-        f"Доп. деятельность: {company.activity_other or '—'}",
-        f"Выручка: {company.revenue or '—'}",
-        f"Сотрудники: {company.employees or '—'}",
-        f"Обороты импорта: {company.import_turnover or '—'}",
-        f"Обороты экспорта: {company.export_turnover or '—'}",
-        f"Подтверждённый импорт: {company.import_confirmed or '—'}",
-        f"Валютные платежи: {company.foreign_payments or '—'}",
-        f"Предмет снабжения: {company.supply_subject or '—'}",
-    ]
+    score = 0
+    evidence = []
+    has_ved = False
+    is_importer = False
+    is_exporter = False
+    has_foreign_payments = False
+    has_international_partners = False
 
-    # 2. Search via Brave for VED keywords
-    search_results = []
-    ved_keywords = [
-        f"{company.name} {company.inn} ВЭД импорт экспорт",
-        f"{company.name} {company.inn} внешнеэкономическая деятельность валютные платежи",
-    ]
+    # 1. Check explicit VED fields
+    if company.import_turnover and company.import_turnover > 0:
+        has_ved = True
+        is_importer = True
+        score += 30
+        evidence.append(f"Обороты импорта: {company.import_turnover:,.0f} руб.")
+    
+    if company.export_turnover and company.export_turnover > 0:
+        has_ved = True
+        is_exporter = True
+        score += 30
+        evidence.append(f"Обороты экспорта: {company.export_turnover:,.0f} руб.")
+    
+    if company.import_confirmed and company.import_confirmed > 0:
+        has_ved = True
+        is_importer = True
+        score += 20
+        evidence.append(f"Подтверждённый импорт: {company.import_confirmed:,.0f} руб.")
 
-    for q in ved_keywords:
-        res = await _search_brave_ved(company.name, company.inn, q)
-        search_results.extend(res)
+    if company.foreign_payments and company.foreign_payments > 0:
+        has_ved = True
+        has_foreign_payments = True
+        score += 25
+        evidence.append(f"Валютные платежи: {company.foreign_payments:,.0f} руб.")
 
-    company_text = "\n".join(company_data_lines)
-    search_text = "\n".join(search_results[:5]) if search_results else "Результаты поиска недоступны"
+    # 2. Check supply_subject for VED keywords
+    if company.supply_subject:
+        subj_lower = company.supply_subject.lower()
+        for kw in VED_KEYWORDS_IMPORT:
+            if kw in subj_lower:
+                is_importer = True
+                has_ved = True
+                score += 10
+                evidence.append(f"Предмет снабжения (импорт): {company.supply_subject[:100]}")
+                break
+        for kw in VED_KEYWORDS_EXPORT:
+            if kw in subj_lower:
+                is_exporter = True
+                has_ved = True
+                score += 10
+                evidence.append(f"Предмет снабжения (экспорт): {company.supply_subject[:100]}")
+                break
 
-    # 3. Call OpenRouter
-    if not settings.openrouter_api_key:
-        result["reasoning"] = "OpenRouter API key not configured"
-        return result
+    # 3. Check activity_main for VED-related keywords
+    if company.activity_main:
+        act_lower = company.activity_main.lower()
+        for kw in VED_KEYWORDS_ACTIVITY:
+            if kw in act_lower:
+                has_ved = True
+                score += 15
+                evidence.append(f"Деятельность содержит '{kw}': {company.activity_main[:100]}")
+                break
 
-    try:
-        async with httpx.AsyncClient(timeout=60) as c:
-            payload = {
-                "model": settings.llm_model,
-                "messages": [
-                    {"role": "system", "content": QUALIFY_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": f"=== Данные компании ===\n{company_text}\n\n=== Результаты веб-поиска ===\n{search_text}",
-                    },
-                ],
-                "temperature": 0.1,
-            }
-            resp = await c.post(
-                f"{settings.openrouter_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://novel.maxnov.ru",
-                    "X-Title": "Novel CRM",
-                },
-                json=payload,
-            )
-            data = resp.json()
-            logger.info("OpenRouter qualification response status=%s body=%s", resp.status_code, json.dumps(data, ensure_ascii=False)[:500])
-            if "choices" in data:
-                content = data["choices"][0]["message"]["content"].strip()
-                content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-                parsed = json.loads(content)
-                result.update(parsed)
-            elif "error" in data:
-                result["reasoning"] = f"OpenRouter error: {data['error']}"
-            else:
-                result["reasoning"] = f"Неожиданный ответ OpenRouter: {json.dumps(data, ensure_ascii=False)[:300]}"
-    except Exception:
-        logger.exception("OpenRouter qualification call failed")
-        result["reasoning"] = "Ошибка вызова AI для квалификации"
+    if company.activity_other:
+        act_lower = company.activity_other.lower()
+        for kw in VED_KEYWORDS_ACTIVITY:
+            if kw in act_lower:
+                has_ved = True
+                score += 10
+                evidence.append(f"Доп. деятельность содержит '{kw}': {company.activity_other[:100]}")
+                break
 
+    # 4. Check revenue scale (larger companies more likely to do VED)
+    if company.revenue and company.revenue > 0:
+        if company.revenue > 100_000_000:  # > 100M
+            score += 10
+            evidence.append(f"Высокая выручка: {company.revenue:,.0f} руб.")
+        elif company.revenue > 10_000_000:  # > 10M
+            score += 5
+            evidence.append(f"Выручка: {company.revenue:,.0f} руб.")
+
+    # 5. Check employees
+    if company.employees and company.employees > 50:
+        score += 5
+        evidence.append(f"Команда: {company.employees} чел.")
+
+    # 6. Determine final flags
+    result["score"] = min(score, 100)
+    result["has_ved"] = has_ved
+    result["is_importer"] = is_importer if is_importer else (None if not has_ved else False)
+    result["is_exporter"] = is_exporter if is_exporter else (None if not has_ved else False)
+    result["has_foreign_payments"] = has_foreign_payments if has_foreign_payments else (None if not has_ved else False)
+    result["has_international_partners"] = has_international_partners
+    result["evidence"] = evidence[:5]  # top 5
+
+    if has_ved:
+        result["reasoning"] = "Компания имеет признаки ВЭД деятельности: " + "; ".join(evidence[:3])
+        result["needs_review"] = False
+    else:
+        result["reasoning"] = "Прямых признаков ВЭД в данных не найдено. Рекомендуется ручная проверка."
+        result["needs_review"] = True
+
+    logger.info("Qualification result: score=%d, has_ved=%s, evidence=%s", result["score"], result["has_ved"], evidence)
     return result
