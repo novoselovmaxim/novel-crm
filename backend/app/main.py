@@ -6,7 +6,8 @@ from pathlib import Path
 
 from .database import get_db
 from .models import create_tables
-from .routers import auth, companies, dashboard, telegram, import_routes, availability, pipeline, tracking, communications, follow_ups, ai_search, research
+from .models_ved import create_ved_tables
+from .routers import auth, companies, dashboard, telegram, import_routes, availability, pipeline, tracking, communications, follow_ups, ai_search, research, ved_routes
 from .notifications import notifier
 from .telegram_webhook import router as telegram_webhook_router, start_polling, stop_polling
 from .scheduler import create_scheduler
@@ -35,6 +36,7 @@ app.include_router(communications.router)
 app.include_router(follow_ups.router)
 app.include_router(ai_search.router)
 app.include_router(research.router)
+app.include_router(ved_routes.router)
 
 @app.get("/api/health")
 async def health():
@@ -44,6 +46,7 @@ async def health():
 async def startup():
     global scheduler
     await create_tables()
+    await create_ved_tables()
     await notifier.initialize()
     try:
         await start_polling()

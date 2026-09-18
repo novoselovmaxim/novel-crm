@@ -3,6 +3,7 @@ import { useAuth } from '../store/auth'
 import api from '../api/client'
 import CompanyTable from '../components/CompanyTable'
 import PipelineBoard from '../components/PipelineBoard'
+import VEDTab from '../components/VEDTab'
 import ImportModal from '../components/ImportModal'
 import ProfileModal from '../components/ProfileModal'
 import GuideModal, { shouldShowGuide } from '../components/GuideModal'
@@ -11,6 +12,7 @@ import { DashboardStats } from '../types'
 
 const tabs = [
   { key: 'companies', label: 'Компании' },
+  { key: 'ved', label: 'ВЭД' },
   { key: 'pipeline', label: 'Воронка' },
   { key: 'followup', label: 'Follow-up', disabled: true },
 ]
@@ -114,6 +116,7 @@ export default function Dashboard() {
 
       <div className="flex-1 overflow-hidden">
         {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} openCompanyId={selectedCompanyId} onCompanyClose={() => setSelectedCompanyId(null)} />}
+        {activeTab === 'ved' && <VEDTab />}
         {activeTab === 'pipeline' && (
           <PipelineBoard
             onSelectCompany={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}
