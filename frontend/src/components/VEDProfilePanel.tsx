@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { VedProfileDetail, VedDeclaration } from '../types/ved'
 
 interface Props {
   inn: string | null
   onClose: () => void
+  onOpenInCRM?: (companyId: string) => void
+  onCreateInCRM?: (profile: VedProfileDetail) => Promise<string | null>
 }
 
 function formatNum(v: number | null): string {
@@ -84,11 +85,10 @@ function DeclarationRow({ decl, expanded, onToggle }: { decl: VedDeclaration; ex
   )
 }
 
-export default function VEDProfilePanel({ inn, onClose }: Props) {
+export default function VEDProfilePanel({ inn, onClose, onOpenInCRM, onCreateInCRM }: Props) {
   const [profile, setProfile] = useState<VedProfileDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedDecl, setExpandedDecl] = useState<string | null>(null)
-  const navigate = useNavigate()
 
   useEffect(() => {
     if (!inn) return
@@ -100,37 +100,47 @@ export default function VEDProfilePanel({ inn, onClose }: Props) {
   }, [inn])
 
   const handleOpenCRM = () => {
-    if (profile?.company_id) {
+    if (profile?.company_id && onOpenInCRM) {
       onClose()
-      navigate(`/companies/${profile.company_id}`)
+      onOpenInCRM(profile.company_id)
     }
   }
 
   const handleCreateInCRM = async () => {
     if (!profile) return
-    try {
-      const { data } = await api.post('/companies', {
-        inn: profile.inn,
-        name: profile.company_name,
-        region: profile.region,
-        address: profile.address,
-        phone: profile.contact_phone,
-        email: profile.contact_email,
-        website: profile.website,
-        director: profile.director,
-        ogrn: profile.ogrn,
-        activity_main: profile.activity,
-        revenue: profile.revenue,
-        employees: profile.employees,
-        source_orig: profile.source_files?.join(', '),
-        call_status: 'new',
-        pipeline_stage: 'new',
-      })
-      onClose()
-      navigate(`/companies/${data.id}`)
-    } catch (e) {
-      console.error('Failed to create company', e)
-      alert('Ошибка при создании компании')
+    if (onCreateInCRM) {
+      const newCompanyId = await onCreateInCRM(profile)
+      if (newCompanyId && onOpenInCRM) {
+        onClose()
+        onOpenInCRM(newCompanyId)
+      }
+    } else {
+      try {
+        const { data } = await api.post('/companies', {
+          inn: profile.inn,
+          name: profile.company_name,
+          region: profile.region,
+          address: profile.address,
+          phone: profile.contact_phone,
+          email: profile.contact_email,
+          website: profile.website,
+          director: profile.director,
+          ogrn: profile.ogrn,
+          activity_main: profile.activity,
+          revenue: profile.revenue,
+          employees: profile.employees,
+          source_orig: profile.source_files?.join(', '),
+          call_status: 'new',
+          pipeline_stage: 'new',
+        })
+        onClose()
+        if (onOpenInCRM) {
+          onOpenInCRM(data.id)
+        }
+      } catch (e) {
+        console.error('Failed to create company', e)
+        alert('Ошибка при создании компании')
+      }
     }
   }
 

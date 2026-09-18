@@ -127,7 +127,36 @@ export default function Dashboard() {
 
       <div className="flex-1 overflow-hidden">
         {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} openCompanyId={selectedCompanyId} onCompanyClose={() => setSelectedCompanyId(null)} />}
-        {activeTab === 'ved' && <VEDTab initialInn={initialVedInn || undefined} />}
+        {activeTab === 'ved' && <VEDTab 
+          initialInn={initialVedInn || undefined}
+          onOpenInCRM={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}
+          onCreateInCRM={async (profile) => {
+            try {
+              const { data } = await api.post('/companies', {
+                inn: profile.inn,
+                name: profile.company_name,
+                region: profile.region,
+                address: profile.address,
+                phone: profile.contact_phone,
+                email: profile.contact_email,
+                website: profile.website,
+                director: profile.director,
+                ogrn: profile.ogrn,
+                activity_main: profile.activity,
+                revenue: profile.revenue,
+                employees: profile.employees,
+                source_orig: profile.source_files?.join(', '),
+                call_status: 'new',
+                pipeline_stage: 'new',
+              })
+              return data.id
+            } catch (e) {
+              console.error('Failed to create company', e)
+              alert('Ошибка при создании компании')
+              return null
+            }
+          }}
+        />}
         {activeTab === 'pipeline' && (
           <PipelineBoard
             onSelectCompany={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}
