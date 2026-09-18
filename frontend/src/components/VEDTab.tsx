@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import VEDProfileTable from './VEDProfileTable'
 import VEDProfilePanel from './VEDProfilePanel'
-import { VedStats } from '../types/ved'
+import { VedStats, VedProfile } from '../types/ved'
 
 function formatNum(v: number | null): string {
   if (v == null) return '—'
@@ -11,15 +12,57 @@ function formatNum(v: number | null): string {
   return v.toLocaleString('ru-RU')
 }
 
-export default function VEDTab() {
-  const [selectedInn, setSelectedInn] = useState<string | null>(null)
+export default function VEDTab({ initialInn }: { initialInn?: string }) {
+  const [selectedInn, setSelectedInn] = useState<string | null>(initialInn || null)
   const [stats, setStats] = useState<VedStats | null>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     api.get('/ved/stats')
       .then(({ data }) => setStats(data))
       .catch(console.error)
   }, [])
+
+  useEffect(() => {
+    if (initialInn) {
+      setSelectedInn(initialInn)
+    }
+  }, [initialInn])
+
+  const handleOpenCRM = (profile: VedProfile) => {
+    if (profile.company_id) {
+      navigate(`/companies/${profile.company_id}`)
+    }
+  }
+
+  const handleCreateInCRM = async (profile: VedProfile) => {
+    try {
+      const { data } = await api.post('/companies', {
+        inn: profile.inn,
+        name: profile.company_name,
+        region: profile.region,
+        address: profile.address,
+        phone: profile.contact_phone,
+        email: profile.contact_email,
+        website: profile.website,
+        director: profile.director,
+        ogrn: profile.ogrn,
+        activity_main: profile.activity,
+        revenue: profile.revenue,
+        employees: profile.employees,
+        source_orig: profile.source_files?.join(', '),
+        call_status: 'new',
+        pipeline_stage: 'new',
+      })
+      // Refresh stats
+      api.get('/ved/stats').then(({ data }) => setStats(data))
+      // Navigate to new company
+      navigate(`/companies/${data.id}`)
+    } catch (e) {
+      console.error('Failed to create company', e)
+      alert('Ошибка при создании компании')
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -40,6 +83,8 @@ export default function VEDTab() {
       <div className="flex-1 min-h-0">
         <VEDProfileTable
           onSelect={p => setSelectedInn(p.inn)}
+          onOpenCRM={handleOpenCRM}
+          onCreateInCRM={handleCreateInCRM}
           selectedInn={selectedInn}
         />
       </div>

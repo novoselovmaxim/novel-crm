@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import api from '../api/client'
 import CompanyTable from '../components/CompanyTable'
@@ -20,6 +21,7 @@ const tabs = [
 export default function Dashboard() {
   const user = useAuth((s) => s.user)
   const logout = useAuth((s) => s.logout)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [metrics, setMetrics] = useState<DashboardStats | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
@@ -27,6 +29,15 @@ export default function Dashboard() {
   const [pipelineFilter, setPipelineFilter] = useState<string | null>(null)
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
+  const initialVedInn = searchParams.get('ved_inn')
+
+  useEffect(() => {
+    if (initialVedInn) {
+      setActiveTab('ved')
+      // Clear the param so it doesn't persist on refresh
+      setSearchParams({})
+    }
+  }, [initialVedInn])
 
   useEffect(() => {
     api.get('/dashboard/me').then(({ data }) => setMetrics(data))
@@ -116,7 +127,7 @@ export default function Dashboard() {
 
       <div className="flex-1 overflow-hidden">
         {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} openCompanyId={selectedCompanyId} onCompanyClose={() => setSelectedCompanyId(null)} />}
-        {activeTab === 'ved' && <VEDTab />}
+        {activeTab === 'ved' && <VEDTab initialInn={initialVedInn || undefined} />}
         {activeTab === 'pipeline' && (
           <PipelineBoard
             onSelectCompany={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}

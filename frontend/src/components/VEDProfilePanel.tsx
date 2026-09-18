@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { VedProfileDetail, VedDeclaration } from '../types/ved'
 
 interface Props {
   inn: string | null
   onClose: () => void
-  onLinked?: () => void
 }
 
 function formatNum(v: number | null): string {
@@ -88,6 +88,7 @@ export default function VEDProfilePanel({ inn, onClose }: Props) {
   const [profile, setProfile] = useState<VedProfileDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedDecl, setExpandedDecl] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!inn) return
@@ -98,6 +99,41 @@ export default function VEDProfilePanel({ inn, onClose }: Props) {
       .finally(() => setLoading(false))
   }, [inn])
 
+  const handleOpenCRM = () => {
+    if (profile?.company_id) {
+      onClose()
+      navigate(`/companies/${profile.company_id}`)
+    }
+  }
+
+  const handleCreateInCRM = async () => {
+    if (!profile) return
+    try {
+      const { data } = await api.post('/companies', {
+        inn: profile.inn,
+        name: profile.company_name,
+        region: profile.region,
+        address: profile.address,
+        phone: profile.contact_phone,
+        email: profile.contact_email,
+        website: profile.website,
+        director: profile.director,
+        ogrn: profile.ogrn,
+        activity_main: profile.activity,
+        revenue: profile.revenue,
+        employees: profile.employees,
+        source_orig: profile.source_files?.join(', '),
+        call_status: 'new',
+        pipeline_stage: 'new',
+      })
+      onClose()
+      navigate(`/companies/${data.id}`)
+    } catch (e) {
+      console.error('Failed to create company', e)
+      alert('Ошибка при создании компании')
+    }
+  }
+
   if (!inn) return null
 
   return (
@@ -107,10 +143,20 @@ export default function VEDProfilePanel({ inn, onClose }: Props) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-muted/10 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <h2 className="text-lg font-semibold text-text truncate">{profile?.company_name || inn}</h2>
-            {profile?.company_id && (
-              <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400 flex-shrink-0">
-                В базе CRM
-              </span>
+            {profile?.company_id ? (
+              <button
+                onClick={handleOpenCRM}
+                className="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400 flex-shrink-0 hover:bg-green-500/30 transition-colors"
+              >
+                Открыть в CRM
+              </button>
+            ) : (
+              <button
+                onClick={handleCreateInCRM}
+                className="px-2 py-0.5 text-xs rounded-full bg-accent/20 text-accent flex-shrink-0 hover:bg-accent/30 transition-colors"
+              >
+                + Создать в CRM
+              </button>
             )}
           </div>
           <button onClick={onClose} className="text-muted hover:text-text text-xl leading-none">&times;</button>
