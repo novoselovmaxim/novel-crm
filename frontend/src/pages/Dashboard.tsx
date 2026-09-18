@@ -9,13 +9,14 @@ import ImportModal from '../components/ImportModal'
 import ProfileModal from '../components/ProfileModal'
 import GuideModal, { shouldShowGuide } from '../components/GuideModal'
 import StatusBadge from '../components/StatusBadge'
+import FollowUpDashboard from '../components/FollowUpDashboard'
 import { DashboardStats } from '../types'
 
 const tabs = [
   { key: 'companies', label: 'Компании' },
   { key: 'ved', label: 'ВЭД' },
   { key: 'pipeline', label: 'Воронка' },
-  { key: 'followup', label: 'Follow-up', disabled: true },
+  { key: 'followup', label: 'Напоминания' },
 ]
 
 export default function Dashboard() {
@@ -112,13 +113,12 @@ export default function Dashboard() {
         {tabs.map(tab => (
           <button
             key={tab.key}
-            disabled={tab.disabled}
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
                 ? 'border-accent text-text'
                 : 'border-transparent text-muted hover:text-text'
-            } ${tab.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+            }`}
           >
             {tab.label}
           </button>
@@ -163,11 +163,7 @@ export default function Dashboard() {
             onNavigateToCompany={(stage) => { setSelectedCompanyId(null); setActiveTab('companies'); setPipelineFilter(stage) }}
           />
         )}
-        {activeTab === 'followup' && (
-          <div className="flex items-center justify-center h-full text-muted text-sm">
-            Скоро
-          </div>
-        )}
+        {activeTab === 'followup' && <FollowUpDashboard />}
       </div>
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}

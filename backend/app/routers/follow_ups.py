@@ -23,11 +23,33 @@ async def list_follow_ups(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(FollowUp)
+        select(FollowUp, Company.name)
+        .join(Company, FollowUp.company_id == Company.id)
         .where(FollowUp.company_id == company_id)
         .order_by(FollowUp.created_at.desc())
     )
-    return result.scalars().all()
+    follow_ups = []
+    for fup, company_name in result.all():
+        fup.company_name = company_name
+        follow_ups.append(fup)
+    return follow_ups
+
+
+@router.get("/all", response_model=list[FollowUpResponse])
+async def list_all_follow_ups(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(FollowUp, Company.name)
+        .join(Company, FollowUp.company_id == Company.id)
+        .order_by(FollowUp.scheduled_at.desc())
+    )
+    follow_ups = []
+    for fup, company_name in result.all():
+        fup.company_name = company_name
+        follow_ups.append(fup)
+    return follow_ups
 
 
 @router.post("", response_model=FollowUpResponse, status_code=201)

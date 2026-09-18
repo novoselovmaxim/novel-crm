@@ -156,6 +156,7 @@ export interface FollowUp {
   id: string
   company_id: string
   user_id: string
+  company_name: string | null
   recipient_email: string
   trigger_type: string
   status: string
