@@ -115,6 +115,8 @@ export default function VEDProfileTable({ onSelect, onOpenCRM, onCreateInCRM, se
   const [hasCompany, setHasCompany] = useState<string>('')
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(50)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
   const parentRef = useRef<HTMLDivElement>(null)
 
   const fetchProfiles = useCallback(async () => {
@@ -126,7 +128,9 @@ export default function VEDProfileTable({ onSelect, onOpenCRM, onCreateInCRM, se
       if (hasCompany === 'yes') params.has_company = true
       if (hasCompany === 'no') params.has_company = false
       const { data } = await api.get('/ved/profiles', { params })
-      setProfiles(data)
+      setProfiles(data.items)
+      setTotal(data.total)
+      setTotalPages(data.total_pages)
     } catch (e) {
       console.error('Failed to load VED profiles', e)
     } finally {
@@ -137,8 +141,6 @@ export default function VEDProfileTable({ onSelect, onOpenCRM, onCreateInCRM, se
   useEffect(() => { fetchProfiles() }, [fetchProfiles])
 
   useEffect(() => { setPage(0) }, [search, direction, hasCompany])
-
-  const totalPages = Math.ceil(profiles.length / pageSize) || 1
 
   const rowVirtualizer = useVirtualizer({
     count: profiles.length,
@@ -234,7 +236,7 @@ export default function VEDProfileTable({ onSelect, onOpenCRM, onCreateInCRM, se
 
           <div className="sticky bottom-0 z-10 px-4 py-2 bg-bg/95 backdrop-blur-sm border-t border-muted/10 flex items-center justify-between">
             <span className="text-xs text-muted">
-              Страница {page + 1} из {totalPages} • Всего: {profiles.length}
+              Страница {page + 1} из {totalPages} • Всего: {total}
             </span>
             <div className="flex items-center gap-2">
               <button
