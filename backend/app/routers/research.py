@@ -176,12 +176,12 @@ async def research_follow_up(
     context = request.context or f"Компания: {company.name}, ИНН: {company.inn}"
     if company.activity_main:
         context += f"\nДеятельность: {company.activity_main}"
-    if company.description:
-        context += f"\nОписание: {company.description}"
+    if company.ai_summary:
+        context += f"\nОписание: {company.ai_summary}"
 
-    if not settings.openrouter_api_key:
+    if not settings.zveno_api_key:
         return {
-            "answer": "AI-функция недоступна (OpenRouter заблокирован в РФ). "
+            "answer": "AI-функция недоступна (ZVENO API key не настроен). "
                       "Используйте данные из исследования: Brave результаты, Exa, скрейпинг сайтов. "
                       "Вопрос: " + request.question,
             "question": request.question
@@ -200,18 +200,16 @@ async def research_follow_up(
         import httpx
         async with httpx.AsyncClient(timeout=60) as c:
             payload = {
-                "model": settings.llm_model,
+                "model": settings.llm_model_qualify,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 800,
                 "temperature": 0.3,
             }
             resp = await c.post(
-                f"{settings.openrouter_base_url}/chat/completions",
+                f"{settings.zveno_base_url}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Authorization": f"Bearer {settings.zveno_api_key}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://novel.maxnov.ru",
-                    "X-Title": "Novel CRM",
                 },
                 json=payload,
             )
@@ -219,8 +217,8 @@ async def research_follow_up(
             if "choices" in data and data["choices"]:
                 answer = data["choices"][0]["message"]["content"] or "Не удалось получить ответ"
             else:
-                logger.warning("OpenRouter follow-up failed: %s", json.dumps(data, ensure_ascii=False)[:300])
-                answer = f"OpenRouter error: {data.get('error', {}).get('message', 'Unknown error')}"
+                logger.warning("ZVENO follow-up failed: %s", json.dumps(data, ensure_ascii=False)[:300])
+                answer = f"ZVENO error: {data.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
         logger.exception("Follow-up failed")
         answer = f"Ошибка вызова AI: {str(e)}"
