@@ -29,8 +29,8 @@ async def ai_search_company(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not settings.brave_api_key:
-        raise HTTPException(status_code=400, detail="Brave API key not configured")
+    if not settings.zveno_api_key:
+        raise HTTPException(status_code=400, detail="ZVENO API key not configured")
 
     result = await db.execute(
         select(Company).where(Company.id == company_id, Company.is_deleted == False)
@@ -165,6 +165,9 @@ async def ai_qualify_company(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not settings.zveno_api_key:
+        raise HTTPException(status_code=400, detail="ZVENO API key not configured")
+
     result = await db.execute(
         select(Company).where(Company.id == company_id, Company.is_deleted == False)
     )
