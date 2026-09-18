@@ -311,6 +311,7 @@ class FollowUpResponse(BaseModel):
     id: uuid.UUID
     company_id: uuid.UUID
     user_id: uuid.UUID
+    company_name: Optional[str] = None
     recipient_email: str
     trigger_type: str
     status: str
