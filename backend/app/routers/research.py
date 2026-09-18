@@ -1,4 +1,4 @@
-"""Research endpoints — multi-source company investigation."""
+"""Research endpoints -- multi-source company investigation."""
 import copy
 import json
 import logging
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/research", tags=["research"])
 
 
 class ResearchRequest(BaseModel):
-    sources: list[str] = ["brave", "exa", "zveno"]
+    sources: list[str] = ["brave", "exa"]
     custom_query: str = ""
 
 
@@ -46,8 +46,6 @@ async def research_company_endpoint(
         available_sources.append("brave")
     if settings.exa_api_key:
         available_sources.append("exa")
-    if settings.zveno_api_key:
-        available_sources.append("zveno")
 
     requested = [s for s in request.sources if s in available_sources]
     if not requested:
@@ -153,8 +151,6 @@ async def research_company_endpoint(
         "sources": research.get("sources", []),
         "brave_results": research.get("brave_results", []),
         "exa_results": research.get("exa_results", []),
-        "zveno_answer": research.get("zveno_answer", ""),
-        "zveno_results": research.get("zveno_results", []),
         "scraped_texts": research.get("scraped_texts", []),
         "all_urls": research.get("all_urls", []),
         "raw_text_preview": research.get("raw_text_preview", ""),
@@ -169,7 +165,7 @@ async def research_follow_up(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Answer a follow-up question about company research results using GPT."""
+    """Answer a follow-up question about company research results using OpenRouter GPT."""
     result = await db.execute(
         select(Company).where(Company.id == company_id, Company.is_deleted == False)
     )
@@ -190,33 +186,41 @@ async def research_follow_up(
 
 Вопрос: {request.question}
 
-Ответь кратко и по существу на русском языке. Если данных недостаточно — скажи об этом."""
+Ответь кратко и по существу на русском языке. Если данных недостаточно -- скажи об этом."""
+
+    if not settings.openrouter_api_key:
+        return {"answer": "OpenRouter API key не настроен", "question": request.question}
 
     try:
-        from ..ai_search import _extract_with_gpt
-        # Use GPT to generate follow-up answer
-        client = None
-        try:
-            import openai
-            client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
-        except Exception:
-            pass
-
-        if client:
-            resp = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=800,
-                temperature=0.3,
+        import httpx
+        async with httpx.AsyncClient(timeout=60) as c:
+            payload = {
+                "model": settings.llm_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 800,
+                "temperature": 0.3,
+            }
+            resp = await c.post(
+                f"{settings.openrouter_base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://novel.maxnov.ru",
+                    "X-Title": "Novel CRM",
+                },
+                json=payload,
             )
-            answer = resp.choices[0].message.content or "Не удалось получить ответ"
-        else:
-            answer = "OpenAI API key не настроен"
-
-        return {"answer": answer, "question": request.question}
+            data = resp.json()
+            if "choices" in data and data["choices"]:
+                answer = data["choices"][0]["message"]["content"] or "Не удалось получить ответ"
+            else:
+                logger.warning("OpenRouter follow-up failed: %s", json.dumps(data, ensure_ascii=False)[:300])
+                answer = f"OpenRouter error: {data.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
         logger.exception("Follow-up failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        answer = f"Ошибка вызова AI: {str(e)}"
+
+    return {"answer": answer, "question": request.question}
 
 
 @router.post("/{company_id}/save")
