@@ -17,9 +17,10 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     base_url: str = "https://novel.maxnov.ru"
-    openrouter_api_key: str = ""
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "openai/gpt-4o-mini"
+    zveno_api_key: str = ""
+    zveno_base_url: str = "https://api.zveno.ai/v1"
+    llm_model: str = "google/gemma-4-26b-a4b-it:free"
+    llm_model_qualify: str = "nvidia/nemotron-3-super-120b-a12b:free"
     brave_api_key: str = ""
     exa_api_key: str = ""
 
