@@ -1,9 +1,9 @@
 """Multi-source AI company search with LLM extraction.
 
 Flow:
-  1. ZVENO Perplexity sonar-pro-search (works from RF, no external keys)
-  2. Scrape top URLs from result citations
-  3. Send all raw data → ZVENO GPT for structured extraction (fallback)
+  1. Brave Search (works from RF, has API key)
+  2. Scrape top URLs from Brave results
+  3. Send all raw data -> OpenRouter GPT for structured extraction (fallback)
   4. Regex extraction as last resort
 """
 import json
@@ -30,8 +30,6 @@ AGGREGATOR_DOMAINS = frozenset({
     "youtube", "twitter", "x.com", "avito", "ozon", "wildberries",
     "aliexpress", "ebay", "apple", "microsoft",
 })
-
-SONAR_MODEL = "perplexity/sonar-pro-search"
 
 KEYS = ("website", "phone", "email", "activity", "description")
 
@@ -73,59 +71,47 @@ EXTRACT_SYSTEM_PROMPT = """Ты — помощник по извлечению �
 
 
 def _domain_of(url: str) -> str:
-    """Return bare domain without scheme/path."""
-    if not url:
-        return ""
-    if "://" not in url:
-        url = "//" + url
-    try:
-        from urllib.parse import urlparse
-        return (urlparse(url).netloc or "").lower()
-    except Exception:
-        return url.lower()
+    """Extract bare domain from URL."""
+    domain = re.sub(r"https?://(www\.)?", "", url).rstrip("/").lower()
+    return domain
 
 
 def _is_company_domain(domain: str) -> bool:
-    domain = domain.lower().removeprefix("www.")
-    for agg in AGGREGATOR_DOMAINS:
-        if agg in domain:
+    """Filter out aggregator/known non-company domains."""
+    for bad in AGGREGATOR_DOMAINS:
+        if bad in domain:
             return False
-    parts = domain.split(".")
-    if len(parts) < 2:
-        return False
-    tld = parts[-1]
-    return tld in ("ru", "com", "net", "org", "su", "рф", "info", "biz", "pro")
+    return True
 
 
 def _parse_json(content: str) -> Optional[dict]:
-    """Robust JSON parse: strip code fences, fall back to first {...} block."""
-    if not content:
-        return None
-    stripped = re.sub(r"^```(?:json)?\s*", "", content.strip())
-    stripped = re.sub(r"\s*```$", "", stripped).strip()
+    """Robust JSON extraction from LLM output."""
+    content = content.strip()
+    content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
-        return json.loads(stripped)
+        return json.loads(content)
     except json.JSONDecodeError:
-        pass
-    m = re.search(r"\{.*\}", stripped, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group(0))
-        except json.JSONDecodeError:
-            return None
+        m = re.search(r"\{.*\}", content, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except json.JSONDecodeError:
+                pass
+    logger.warning("Failed to parse JSON from LLM: %s", content[:200])
     return None
 
 
-def _extract_text_from_html(html: str, max_chars: int = 5000) -> str:
-    soup = BeautifulSoup(html, "lxml")
-    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+def _extract_text_from_html(html: str, max_chars: int = 3000) -> str:
+    """Clean HTML to plain text."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
         tag.decompose()
     text = soup.get_text(separator=" ", strip=True)
-    text = re.sub(r"\s+", " ", text)
     return text[:max_chars]
 
 
 def _deduplicate_urls(urls: list[str]) -> list[str]:
+    """Deduplicate URLs by domain."""
     seen = set()
     result = []
     for url in urls:
@@ -136,54 +122,37 @@ def _deduplicate_urls(urls: list[str]) -> list[str]:
     return result
 
 
-async def _search_zveno_perplexity(query: str, timeout: int = 90) -> dict:
-    """Search via ZVENO Perplexity sonar-pro-search.
-    Returns {"answer": str, "results": [{url, title, content}]}."""
-    if not settings.zveno_api_key:
-        logger.info("ZVENO not configured, skipping sonar search")
-        return {"answer": "", "results": []}
+async def _search_brave(query: str, num_results: int = 10, timeout: int = 15) -> dict:
+    """Search via Brave Search API.
+    Returns {"results": [{"title", "url", "description", "age"}]}.
+    """
+    if not settings.brave_api_key:
+        logger.info("Brave API key not configured, skipping")
+        return {"results": []}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as c:
-            payload = {
-                "model": SONAR_MODEL,
-                "messages": [
-                    {"role": "system", "content": SEARCH_SYSTEM_PROMPT},
-                    {"role": "user", "content": query},
-                ],
-                "temperature": 0.05,
-            }
-            resp = await c.post(
-                f"{settings.zveno_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.zveno_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
+            resp = await c.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={"X-Subscription-Token": settings.brave_api_key},
+                params={"q": query, "count": num_results, "search_lang": "ru", "country": "ru"},
             )
             if resp.status_code != 200:
-                logger.warning("Sonar search error %s: %s", resp.status_code, resp.text[:300])
-                return {"answer": "", "results": []}
+                logger.warning("Brave search error %s: %s", resp.status_code, resp.text[:300])
+                return {"results": []}
             data = resp.json()
-            if "choices" not in data or not data["choices"]:
-                logger.warning("Sonar search returned no choices: %s", json.dumps(data, ensure_ascii=False)[:300])
-                return {"answer": "", "results": []}
-            msg = data["choices"][0].get("message", {})
-            answer = msg.get("content", "") or ""
             results = []
-            for ann in msg.get("annotations") or []:
-                cit = (ann or {}).get("url_citation") or {}
-                url = cit.get("url", "")
-                if url:
-                    results.append({
-                        "url": url,
-                        "title": cit.get("title", ""),
-                        "content": "",
-                    })
-            return {"answer": answer, "results": results}
+            for r in data.get("web", {}).get("results", []):
+                results.append({
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "description": r.get("description", ""),
+                    "age": r.get("age", ""),
+                })
+            return {"results": results}
     except Exception:
-        logger.exception("Sonar search failed")
-        return {"answer": "", "results": []}
+        logger.exception("Brave search failed")
+        return {"results": []}
 
 
 async def _scrape_url(url: str, timeout: int = 10) -> str:
@@ -199,9 +168,9 @@ async def _scrape_url(url: str, timeout: int = 10) -> str:
 
 
 async def _extract_with_gpt(raw_text: str) -> dict:
-    """Send raw search data to ZVENO GPT for structured extraction."""
-    if not settings.zveno_api_key:
-        logger.info("ZVENO not configured, skipping GPT extraction")
+    """Send raw search data to OpenRouter GPT for structured extraction."""
+    if not settings.openrouter_api_key:
+        logger.info("OpenRouter API key not configured, skipping GPT extraction")
         return {}
 
     try:
@@ -215,10 +184,12 @@ async def _extract_with_gpt(raw_text: str) -> dict:
                 "temperature": 0.05,
             }
             resp = await c.post(
-                f"{settings.zveno_base_url}/chat/completions",
+                f"{settings.openrouter_base_url}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.zveno_api_key}",
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
                     "Content-Type": "application/json",
+                    "HTTP-Referer": "https://novel.maxnov.ru",
+                    "X-Title": "Novel CRM",
                 },
                 json=payload,
             )
@@ -259,103 +230,61 @@ def _extract_with_regex(texts: list[str]) -> dict:
 
 
 async def search_company_info(name: str, inn: str = "", website: str = "") -> dict:
-    """Multi-source search with LLM extraction (ZVENO sonar primary)."""
+    """Multi-source search with LLM extraction (Brave primary)."""
 
-    # — 1. Sonar search —
+    # 1. Brave search
     queries = [f"{name} {inn} официальный сайт телефон email деятельность"]
     if website:
         queries.insert(0, f"{name} {inn} {website} официальный сайт контакты деятельность")
 
     answer = ""
-    results: list[dict] = []
-    seen_urls = set()
+    urls = []
+    brave_snippets = []
+
     for q in queries:
-        sr = await _search_zveno_perplexity(q)
-        if sr.get("answer"):
-            answer = sr["answer"]
-        for r in sr.get("results", []):
-            url = r.get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                results.append(r)
-        if answer:
+        res = await _search_brave(q, num_results=10)
+        for r in res.get("results", []):
+            urls.append(r["url"])
+            snippet = f"{r.get('title', '')}: {r.get('description', '')}"
+            if snippet not in brave_snippets:
+                brave_snippets.append(snippet)
+        # Break after first successful query
+        if res.get("results"):
             break
 
-    sources = [
-        {"url": r["url"], "title": r.get("title", ""), "snippet": ""}
-        for r in results[:8]
-    ]
+    # Deduplicate & filter aggregators
+    urls = _deduplicate_urls(urls)
+    company_urls = [u for u in urls if _is_company_domain(_domain_of(u))]
+    other_urls = [u for u in urls if not _is_company_domain(_domain_of(u))]
+    prioritized = company_urls[:3] + other_urls[:2]
 
-    # — 2. Try structured JSON from sonar —
-    extracted: dict = _parse_json(answer) or {}
+    # 2. Scrape top URLs
+    scraped_texts = []
+    for url in prioritized[:5]:
+        text = await _scrape_url(url)
+        if text:
+            scraped_texts.append(f"--- {url} ---\n{text}")
 
-    # — 3. Deduplicate URLs and pick candidates —
-    urls = _deduplicate_urls([r["url"] for r in results])
-    company_candidates = [u for u in urls if _is_company_domain(_domain_of(u))]
-    first_party_url = company_candidates[0] if company_candidates else urls[0] if urls else website or ""
-
-    # — 4. Scrape top unique URLs (max 3) —
-    scrape_texts: list[str] = []
-    to_scrape = []
-    seen_domains = set()
-    for url in company_candidates[:5]:
-        domain = _domain_of(url)
-        if domain not in seen_domains and len(to_scrape) < 3:
-            seen_domains.add(domain)
-            to_scrape.append(url)
-    if not to_scrape:
-        for url in urls[:3]:
-            domain = _domain_of(url)
-            if domain not in seen_domains:
-                seen_domains.add(domain)
-                to_scrape.append(url)
-
-    import asyncio
-    scrape_results = await asyncio.gather(*[_scrape_url(u) for u in to_scrape], return_exceptions=True)
-    for t in scrape_results:
-        if isinstance(t, str) and t:
-            scrape_texts.append(t)
-
-    # — 5. Build raw text for GPT (fallback enrichment) —
-    raw_parts = []
-    if answer:
-        raw_parts.append(f"=== AI summary ===\n{answer}")
-    if scrape_texts:
-        raw_parts.append(f"=== Website content ===\n" + "\n\n".join(scrape_texts[:2]))
+    # 3. Build raw text for GPT
+    raw_parts = brave_snippets + scraped_texts
     raw_text = "\n\n".join(raw_parts)
 
-    # — 6. Fallback: GPT extraction if sonar gave nothing useful —
-    if not extracted or not any(extracted.get(k) for k in KEYS):
-        gpt_extracted = await _extract_with_gpt(raw_text)
-        for key in KEYS:
-            if not extracted.get(key):
-                extracted[key] = gpt_extracted.get(key, "")
+    # 4. GPT extraction (primary)
+    extracted = await _extract_with_gpt(raw_text) if raw_text else {}
 
-    # — 7. Last resort: regex extraction —
-    if not any(extracted.get(k) for k in ("phone", "email", "activity")):
-        regex_result = _extract_with_regex(scrape_texts)
-        for key in ("phone", "email", "activity"):
-            if not extracted.get(key):
-                extracted[key] = regex_result.get(key, "")
+    # 5. Regex fallback
+    if not extracted or not any(v for v in extracted.values() if v):
+        logger.info("GPT extraction empty, using regex fallback")
+        extracted = _extract_with_regex(scraped_texts)
 
-    # — 8. Build result —
-    first_party_domain = _domain_of(first_party_url)
-    if not _is_company_domain(first_party_domain):
-        first_party_url = website or ""
-
+    # 6. Build result
     result = {
-        "name": name,
-        "inn": inn,
-        "website": extracted.get("website", "") or first_party_url,
-        "description": extracted.get("description", "") or answer or "",
-        "phone": extracted.get("phone", "").rstrip("."),
-        "email": extracted.get("email", "").rstrip(".,;"),
-        "region": "",
+        "website": extracted.get("website", ""),
+        "phone": extracted.get("phone", ""),
+        "email": extracted.get("email", ""),
         "activity": extracted.get("activity", ""),
-        "revenue_hint": "",
-        "employees_hint": "",
-        "sources": sources,
-        "website_candidates": company_candidates[:5],
+        "description": extracted.get("description", ""),
+        "sources": brave_snippets[:5],
+        "website_candidates": prioritized[:5],
     }
-
     return result

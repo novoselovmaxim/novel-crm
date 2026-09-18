@@ -1,6 +1,6 @@
 """Multi-source search orchestrator.
 
-Coordinates Brave, Exa, ZVENO Sonar, Scrapling scraping, and LLM extraction
+Coordinates Brave, Exa, Scrapling scraping, and LLM extraction
 for comprehensive company research.
 """
 import asyncio
@@ -13,7 +13,6 @@ from .search_brave import search_brave_web
 from .search_exa import search_exa_company
 from .scraper_scrapling import scrape_company_sites
 from ..ai_search import (
-    _search_zveno_perplexity,
     _extract_with_gpt,
     _extract_with_regex,
     _parse_json,
@@ -44,13 +43,13 @@ async def research_company(
 ) -> dict:
     """Multi-source company research.
 
-    sources: list of ["brave", "exa", "zveno"]
+    sources: list of ["brave", "exa"]
     custom_query: user-provided search query
 
     Returns dict with results from all sources, extracted data, and metadata.
     """
     if sources is None:
-        sources = ["brave", "exa", "zveno"]
+        sources = ["brave", "exa"]
 
     base_query = f"{name} {inn}".strip()
     if custom_query:
@@ -64,8 +63,6 @@ async def research_company(
         tasks["brave"] = search_brave_web(search_query, count=10)
     if "exa" in sources:
         tasks["exa"] = search_exa_company(name=name, inn=inn, query=search_query)
-    if "zveno" in sources:
-        tasks["zveno"] = _search_zveno_perplexity(search_query)
 
     done = await asyncio.gather(*tasks.values(), return_exceptions=True)
     results_map = dict(zip(tasks.keys(), done))
@@ -76,14 +73,9 @@ async def research_company(
         if isinstance(result, Exception):
             logger.warning("Search source %s failed: %s", source_name, result)
             continue
-        if source_name == "zveno":
-            for r in result.get("results", []):
-                url = r.get("url", "")
-                if url:
-                    all_urls.append(url)
-        elif source_name in ("brave", "exa"):
+        if source_name in ("brave", "exa"):
             if isinstance(result, dict) and result.get("blocked"):
-                logger.info("Source %s blocked by Cloudflare — skipping", source_name)
+                logger.info("Source %s blocked by Cloudflare -- skipping", source_name)
             for r in result.get("results", []):
                 url = r.get("url", "")
                 if url:
@@ -100,12 +92,6 @@ async def research_company(
 
     # --- 5. Build raw text for extraction ---
     raw_parts: list[str] = []
-    zveno_answer = ""
-    zveno_data = results_map.get("zveno")
-    if zveno_data and not isinstance(zveno_data, Exception):
-        zveno_answer = zveno_data.get("answer", "")
-        if zveno_answer:
-            raw_parts.append(f"=== ZVENO AI summary ===\n{zveno_answer}")
 
     brave_data = results_map.get("brave")
     if brave_data and not isinstance(brave_data, Exception):
@@ -131,10 +117,10 @@ async def research_company(
     raw_text = "\n\n".join(raw_parts)
 
     # --- 6. Extract structured data ---
-    extracted: dict = _parse_json(zveno_answer) or {}
+    extracted: dict = {}
 
-    # GPT extraction fallback
-    if not extracted or not any(extracted.get(k) for k in KEYS):
+    # GPT extraction (primary)
+    if raw_text:
         gpt_extracted = await _extract_with_gpt(raw_text)
         for key in KEYS:
             if not extracted.get(key):
@@ -149,7 +135,7 @@ async def research_company(
 
     # --- 7. Source status for UI ---
     sources_info = []
-    for source_name in ["brave", "exa", "zveno"]:
+    for source_name in ["brave", "exa"]:
         result = results_map.get(source_name)
         if result is None:
             sources_info.append({"name": source_name, "status": "skipped", "count": 0})
@@ -164,7 +150,7 @@ async def research_company(
             sources_info.append({
                 "name": source_name,
                 "status": "blocked",
-                "error": "Cloudflare block — IP заблокирован. Используйте Brave.",
+                "error": "Cloudflare block -- IP заблокирован. Используйте Brave.",
                 "count": 0,
             })
         else:
@@ -176,9 +162,6 @@ async def research_company(
             if brave_data and not isinstance(brave_data, Exception) else [],
         "exa_results": results_map.get("exa", {}).get("results", [])
             if exa_data and not isinstance(exa_data, Exception) else [],
-        "zveno_answer": zveno_answer,
-        "zveno_results": results_map.get("zveno", {}).get("results", [])
-            if zveno_data and not isinstance(zveno_data, Exception) else [],
         "scraped_texts": scraped_texts,
         "extracted_data": extracted,
         "sources": sources_info,

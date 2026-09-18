@@ -1,8 +1,9 @@
-"""Lead qualification — does this company do ВЭД?"""
+"""Lead qualification -- does this company do ВЭД?"""
 import json
 import logging
 from typing import Optional
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import settings
@@ -32,11 +33,38 @@ QUALIFY_SYSTEM_PROMPT = """Ты — эксперт по ВЭД (внешнеэк
 }
 
 Где:
-- score — общая оценка likelihood (0 = точно не ВЭД, 100 = идеальный клиент)
-- has_ved — занимается ли ВЭД в принципе
-- needs_review — true если данных недостаточно и нужно вмешательство человека
-- evidence — конкретные факты из данных компании или поиска
+- score -- общая оценка likelihood (0 = точно не ВЭД, 100 = идеальный клиент)
+- has_ved -- занимается ли ВЭД в принципе
+- needs_review -- true если данных недостаточно и нужно вмешательство человека
+- evidence -- конкретные факты из данных компании или поиска
 """
+
+
+async def _search_brave_ved(name: str, inn: str, query: str) -> list[str]:
+    """Search Brave for VED-related info."""
+    if not settings.brave_api_key:
+        logger.info("Brave API key not configured, skipping VED search")
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            resp = await c.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={"X-Subscription-Token": settings.brave_api_key},
+                params={"q": query, "count": 5, "search_lang": "ru", "country": "ru"},
+            )
+            if resp.status_code != 200:
+                logger.warning("Brave VED search error %s: %s", resp.status_code, resp.text[:300])
+                return []
+            data = resp.json()
+            results = []
+            for r in data.get("web", {}).get("results", []):
+                snippet = f"{r.get('title', '')}: {r.get('description', '')} ({r.get('url', '')})"
+                results.append(snippet)
+            return results
+    except Exception:
+        logger.exception("Brave VED search failed")
+        return []
 
 
 async def qualify_company(
@@ -56,7 +84,7 @@ async def qualify_company(
         "needs_review": True,
     }
 
-    # — 1. Gather existing company data —
+    # 1. Gather existing company data
     company_data_lines = [
         f"Название: {company.name}",
         f"ИНН: {company.inn}",
@@ -72,38 +100,26 @@ async def qualify_company(
         f"Предмет снабжения: {company.supply_subject or '—'}",
     ]
 
-    # — 2. Search via ZVENO sonar —
+    # 2. Search via Brave for VED keywords
     search_results = []
     ved_keywords = [
         f"{company.name} {company.inn} ВЭД импорт экспорт",
         f"{company.name} {company.inn} внешнеэкономическая деятельность валютные платежи",
     ]
 
-    if settings.zveno_api_key:
-        try:
-            from .ai_search import _search_zveno_perplexity
-            for q in ved_keywords:
-                sr = await _search_zveno_perplexity(q)
-                answer = sr.get("answer", "")
-                if answer:
-                    search_results.append(f"Поиск: {answer[:600]}")
-                for r in sr.get("results", []):
-                    snippet = f"{r.get('title', '')}: {r.get('url', '')}"
-                    if snippet not in search_results:
-                        search_results.append(snippet)
-        except Exception:
-            logger.exception("Sonar search failed for qualification")
+    for q in ved_keywords:
+        res = await _search_brave_ved(company.name, company.inn, q)
+        search_results.extend(res)
 
     company_text = "\n".join(company_data_lines)
     search_text = "\n".join(search_results[:5]) if search_results else "Результаты поиска недоступны"
 
-    # — 3. Call ZVENO —
-    if not settings.zveno_api_key:
-        result["reasoning"] = "ZVENO API key not configured"
+    # 3. Call OpenRouter
+    if not settings.openrouter_api_key:
+        result["reasoning"] = "OpenRouter API key not configured"
         return result
 
     try:
-        import httpx
         async with httpx.AsyncClient(timeout=60) as c:
             payload = {
                 "model": settings.llm_model,
@@ -117,26 +133,28 @@ async def qualify_company(
                 "temperature": 0.1,
             }
             resp = await c.post(
-                f"{settings.zveno_base_url}/chat/completions",
+                f"{settings.openrouter_base_url}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.zveno_api_key}",
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
                     "Content-Type": "application/json",
+                    "HTTP-Referer": "https://novel.maxnov.ru",
+                    "X-Title": "Novel CRM",
                 },
                 json=payload,
             )
             data = resp.json()
-            logger.info("ZVENO response status=%s body=%s", resp.status_code, json.dumps(data, ensure_ascii=False)[:500])
+            logger.info("OpenRouter qualification response status=%s body=%s", resp.status_code, json.dumps(data, ensure_ascii=False)[:500])
             if "choices" in data:
                 content = data["choices"][0]["message"]["content"].strip()
                 content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
                 parsed = json.loads(content)
                 result.update(parsed)
             elif "error" in data:
-                result["reasoning"] = f"ZVENO error: {data['error']}"
+                result["reasoning"] = f"OpenRouter error: {data['error']}"
             else:
-                result["reasoning"] = f"Неожиданный ответ ZVENO: {json.dumps(data, ensure_ascii=False)[:300]}"
+                result["reasoning"] = f"Неожиданный ответ OpenRouter: {json.dumps(data, ensure_ascii=False)[:300]}"
     except Exception:
-        logger.exception("ZVENO qualification call failed")
+        logger.exception("OpenRouter qualification call failed")
         result["reasoning"] = "Ошибка вызова AI для квалификации"
 
     return result
