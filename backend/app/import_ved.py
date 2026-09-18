@@ -1,7 +1,8 @@
 import re
+import json
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime as dt
 
 import openpyxl
@@ -9,6 +10,17 @@ from sqlalchemy import select
 
 from .database import async_session
 from .models_ved import VedDeclaration, VedCompanyProfile
+
+
+def json_serializer(obj: Any) -> Any:
+    """Custom JSON serializer for non-serializable types."""
+    if isinstance(obj, dt):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if hasattr(obj, '__dict__'):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 def parse_number(val) -> Optional[float]:
@@ -206,7 +218,7 @@ def parse_ved_file(file_path: str) -> list[dict]:
         key_fields["source_file"] = Path(file_path).name
         if "direction" not in key_fields:
             key_fields["direction"] = "import" if "import" in fmt else "export"
-        key_fields["row_data"] = row_data
+        key_fields["row_data"] = json.loads(json.dumps(row_data, default=json_serializer))
         result.append(key_fields)
 
     return result
