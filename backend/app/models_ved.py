@@ -4,9 +4,7 @@ from sqlalchemy.sql import func
 import uuid
 
 from .database import engine
-from sqlalchemy.orm import declarative_base
-
-Base = declarative_base()
+from .models import Base
 
 
 class VedDeclaration(Base):
