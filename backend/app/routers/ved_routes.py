@@ -11,6 +11,7 @@ from ..schemas_ved import (
     VedDeclarationResponse,
     VedProfileResponse,
     VedProfileDetailResponse,
+    VedProfilesResponse,
     VedStatsResponse,
     VedImportResponse,
 )
@@ -20,7 +21,7 @@ from ..import_ved import import_ved_files
 router = APIRouter(prefix="/api/ved", tags=["ved"])
 
 
-@router.get("/profiles", response_model=List[VedProfileResponse])
+@router.get("/profiles", response_model=VedProfilesResponse)
 async def list_profiles(
     direction: Optional[str] = None,
     country: Optional[str] = None,
@@ -56,6 +57,10 @@ async def list_profiles(
     elif has_company is False:
         q = q.where(VedCompanyProfile.company_id.is_(None))
 
+    # Get total count
+    count_q = select(func.count()).select_from(q.subquery())
+    total = (await db.execute(count_q)).scalar() or 0
+
     sort_col = getattr(VedCompanyProfile, sort_by, VedCompanyProfile.total_declarations)
     if sort_dir == "asc":
         q = q.order_by(sort_col.asc())
@@ -64,7 +69,18 @@ async def list_profiles(
 
     q = q.offset(offset).limit(limit)
     result = await db.execute(q)
-    return result.scalars().all()
+    items = result.scalars().all()
+
+    page = offset // limit + 1
+    total_pages = (total + limit - 1) // limit
+
+    return VedProfilesResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=limit,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/profiles/{inn}", response_model=VedProfileDetailResponse)

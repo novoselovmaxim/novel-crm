@@ -63,6 +63,14 @@ class VedProfileDetailResponse(VedProfileResponse):
     declarations: List[VedDeclarationResponse] = []
 
 
+class VedProfilesResponse(BaseModel):
+    items: List[VedProfileResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class VedStatsResponse(BaseModel):
     total_profiles: int
     total_declarations: int

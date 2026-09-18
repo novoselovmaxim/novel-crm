@@ -61,3 +61,11 @@ export interface VedStats {
   top_countries: { country: string; count: number }[]
   top_hs_codes: { code: string; count: number }[]
 }
+
+export interface VedProfilesResponse {
+  items: VedProfile[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
