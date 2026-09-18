@@ -269,7 +269,7 @@ function saveTableState(state: Record<string, unknown>) {
   } catch {}
 }
 
-export default function CompanyTable({ pipelineFilter, openCompanyId: externalCompanyId, onCompanyClose }: { pipelineFilter?: string | null; openCompanyId?: string | null; onCompanyClose?: () => void }) {
+export default function CompanyTable({ pipelineFilter, openCompanyId: externalCompanyId, onCompanyClose, onNavigateToVED }: { pipelineFilter?: string | null; openCompanyId?: string | null; onCompanyClose?: () => void; onNavigateToVED?: (inn: string) => void }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState(() => loadSavedState('searchInput', ''))
@@ -813,7 +813,7 @@ export default function CompanyTable({ pipelineFilter, openCompanyId: externalCo
       {/* Company Card - right side */}
       {selectedCompany && (
         <div className="shrink-0 border-l border-muted/10">
-          <CompanyCard key={selectedCompany.id} company={selectedCompany} onClose={() => { setSelectedCompany(null); onCompanyClose?.() }} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} />
+          <CompanyCard key={selectedCompany.id} company={selectedCompany} onClose={() => { setSelectedCompany(null); onCompanyClose?.() }} onAssign={(userId) => setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, assigned_to: userId } : p))} onFieldUpdate={(field, value) => { setSelectedCompany(prev => prev ? { ...prev, [field]: value } : null); setCompanies(prev => prev.map(p => p.id === selectedCompany.id ? { ...p, [field]: value } : p)) }} onNavigateToCompany={handleMeetingClick} onNavigateToVED={onNavigateToVED} />
         </div>
       )}
 

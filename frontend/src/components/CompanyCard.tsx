@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { Company, User, Comment, CallLog, EmailCommunication, FollowUp } from '../types'
 import { useAuth } from '../store/auth'
@@ -189,7 +188,7 @@ function formatNumericString(val: string | null | undefined) {
   return num.toLocaleString('ru-RU')
 }
 
-export default function CompanyCard({ company: initialCompany, onClose, onAssign, onFieldUpdate, onNavigateToCompany }: { company: Company; onClose: () => void; onAssign?: (id: string) => void; onFieldUpdate?: (field: string, value: string | number | null) => void; onNavigateToCompany?: (id: string) => void }) {
+export default function CompanyCard({ company: initialCompany, onClose, onAssign, onFieldUpdate, onNavigateToCompany, onNavigateToVED }: { company: Company; onClose: () => void; onAssign?: (id: string) => void; onFieldUpdate?: (field: string, value: string | number | null) => void; onNavigateToCompany?: (id: string) => void; onNavigateToVED?: (inn: string) => void }) {
   const [company, setCompany] = useState(initialCompany)
   const [notes, setNotes] = useState('')
   const [selectedStatus, setSelectedStatus] = useState(company.call_status)
@@ -199,10 +198,11 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [managers, setManagers] = useState<User[]>([])
   const currentUser = useAuth(s => s.user)
   const isAdminOrLead = currentUser?.role === 'admin' || currentUser?.role === 'lead'
-  const navigate = useNavigate()
 
   const handleOpenVED = () => {
-    navigate(`/dashboard?ved_inn=${company.inn}`)
+    if (onNavigateToVED) {
+      onNavigateToVED(company.inn)
+    }
   }
 
   useEffect(() => {
