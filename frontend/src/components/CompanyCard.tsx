@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { Company, User, Comment, CallLog, EmailCommunication, FollowUp } from '../types'
 import { useAuth } from '../store/auth'
@@ -198,6 +199,11 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
   const [managers, setManagers] = useState<User[]>([])
   const currentUser = useAuth(s => s.user)
   const isAdminOrLead = currentUser?.role === 'admin' || currentUser?.role === 'lead'
+  const navigate = useNavigate()
+
+  const handleOpenVED = () => {
+    navigate(`/dashboard?ved_inn=${company.inn}`)
+  }
 
   useEffect(() => {
     setAssignedTo(company.assigned_to || '')
@@ -397,10 +403,19 @@ export default function CompanyCard({ company: initialCompany, onClose, onAssign
     <div className="w-[520px] bg-surface flex flex-col h-full">
       {/* Header - sticky */}
       <div className="sticky top-0 bg-surface z-10 p-4 border-b border-muted/10">
-        <div className="flex items-start justify-between mb-2">
-          <h2 className="text-base font-bold leading-tight flex-1 mr-2">{company.name}</h2>
-          <button onClick={onClose} className="text-muted hover:text-text shrink-0 text-lg">✕</button>
+<div className="flex items-start justify-between mb-2">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <h2 className="text-base font-bold leading-tight truncate">{company.name}</h2>
+          <button
+            onClick={handleOpenVED}
+            className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors flex-shrink-0 whitespace-nowrap"
+            title="Открыть в ВЭД"
+          >
+            📊 ВЭД
+          </button>
         </div>
+        <button onClick={onClose} className="text-muted hover:text-text shrink-0 text-lg">✕</button>
+      </div>
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-muted mb-2">
           <span className="font-mono">ИНН {company.inn}</span>
           {company.kpp && <span>КПП {company.kpp}</span>}
