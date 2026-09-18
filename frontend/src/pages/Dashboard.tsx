@@ -126,7 +126,7 @@ export default function Dashboard() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} openCompanyId={selectedCompanyId} onCompanyClose={() => setSelectedCompanyId(null)} />}
+        {activeTab === 'companies' && <CompanyTable pipelineFilter={pipelineFilter} openCompanyId={selectedCompanyId} onCompanyClose={() => setSelectedCompanyId(null)} onNavigateToVED={(inn) => { setActiveTab('ved'); setSearchParams({ ved_inn: inn }) }} />}
         {activeTab === 'ved' && <VEDTab 
           initialInn={initialVedInn || undefined}
           onOpenInCRM={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}
