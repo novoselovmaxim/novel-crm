@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import VEDProfileTable from './VEDProfileTable'
 import VEDProfilePanel from './VEDProfilePanel'
-import { VedStats, VedProfile } from '../types/ved'
+import { VedStats, VedProfile, VedProfileDetail } from '../types/ved'
+
+interface Props {
+  initialInn?: string
+  onOpenInCRM?: (companyId: string) => void
+  onCreateInCRM?: (profile: VedProfile) => Promise<string | null>
+}
 
 function formatNum(v: number | null): string {
   if (v == null) return '—'
@@ -12,10 +17,9 @@ function formatNum(v: number | null): string {
   return v.toLocaleString('ru-RU')
 }
 
-export default function VEDTab({ initialInn }: { initialInn?: string }) {
+export default function VEDTab({ initialInn, onOpenInCRM, onCreateInCRM }: Props) {
   const [selectedInn, setSelectedInn] = useState<string | null>(initialInn || null)
   const [stats, setStats] = useState<VedStats | null>(null)
-  const navigate = useNavigate()
 
   useEffect(() => {
     api.get('/ved/stats')
@@ -30,12 +34,58 @@ export default function VEDTab({ initialInn }: { initialInn?: string }) {
   }, [initialInn])
 
   const handleOpenCRM = (profile: VedProfile) => {
-    if (profile.company_id) {
-      navigate(`/companies/${profile.company_id}`)
+    if (profile.company_id && onOpenInCRM) {
+      onOpenInCRM(profile.company_id)
     }
   }
 
   const handleCreateInCRM = async (profile: VedProfile) => {
+    if (onCreateInCRM) {
+      const newCompanyId = await onCreateInCRM(profile)
+      if (newCompanyId && onOpenInCRM) {
+        onOpenInCRM(newCompanyId)
+      }
+    } else {
+      try {
+        const { data } = await api.post('/companies', {
+          inn: profile.inn,
+          name: profile.company_name,
+          region: profile.region,
+          address: profile.address,
+          phone: profile.contact_phone,
+          email: profile.contact_email,
+          website: profile.website,
+          director: profile.director,
+          ogrn: profile.ogrn,
+          activity_main: profile.activity,
+          revenue: profile.revenue,
+          employees: profile.employees,
+          source_orig: profile.source_files?.join(', '),
+          call_status: 'new',
+          pipeline_stage: 'new',
+        })
+        api.get('/ved/stats').then(({ data }) => setStats(data))
+        if (onOpenInCRM) {
+          onOpenInCRM(data.id)
+        }
+      } catch (e) {
+        console.error('Failed to create company', e)
+        alert('Ошибка при создании компании')
+      }
+    }
+  }
+
+  // Wrapper functions for VEDProfilePanel with correct signatures
+  const handleOpenCRMFromPanel = (companyId: string) => {
+    if (onOpenInCRM) {
+      onOpenInCRM(companyId)
+    }
+  }
+
+  const handleCreateInCRMFromPanel = async (profile: VedProfileDetail) => {
+    if (onCreateInCRM) {
+      return onCreateInCRM(profile)
+    }
     try {
       const { data } = await api.post('/companies', {
         inn: profile.inn,
@@ -54,13 +104,12 @@ export default function VEDTab({ initialInn }: { initialInn?: string }) {
         call_status: 'new',
         pipeline_stage: 'new',
       })
-      // Refresh stats
       api.get('/ved/stats').then(({ data }) => setStats(data))
-      // Navigate to new company
-      navigate(`/companies/${data.id}`)
+      return data.id
     } catch (e) {
       console.error('Failed to create company', e)
       alert('Ошибка при создании компании')
+      return null
     }
   }
 
@@ -93,6 +142,8 @@ export default function VEDTab({ initialInn }: { initialInn?: string }) {
         <VEDProfilePanel
           inn={selectedInn}
           onClose={() => setSelectedInn(null)}
+          onOpenInCRM={handleOpenCRMFromPanel}
+          onCreateInCRM={handleCreateInCRMFromPanel}
         />
       )}
     </div>
