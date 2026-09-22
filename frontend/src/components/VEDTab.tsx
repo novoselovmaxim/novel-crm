@@ -3,6 +3,7 @@ import api from '../api/client'
 import VEDProfileTable from './VEDProfileTable'
 import VEDProfilePanel from './VEDProfilePanel'
 import { VedStats, VedProfile, VedProfileDetail } from '../types/ved'
+import { createCompanyFromVed } from '../utils/ved'
 
 interface Props {
   initialInn?: string
@@ -46,31 +47,12 @@ export default function VEDTab({ initialInn, onOpenInCRM, onCreateInCRM }: Props
         onOpenInCRM(newCompanyId)
       }
     } else {
-      try {
-        const { data } = await api.post('/companies', {
-          inn: profile.inn,
-          name: profile.company_name,
-          region: profile.region,
-          address: profile.address,
-          phone: profile.contact_phone,
-          email: profile.contact_email,
-          website: profile.website,
-          director: profile.director,
-          ogrn: profile.ogrn,
-          activity_main: profile.activity,
-          revenue: profile.revenue,
-          employees: profile.employees,
-          source_orig: profile.source_files?.join(', '),
-          call_status: 'new',
-          pipeline_stage: 'new',
-        })
+      const companyId = await createCompanyFromVed(profile)
+      if (companyId) {
         api.get('/ved/stats').then(({ data }) => setStats(data))
         if (onOpenInCRM) {
-          onOpenInCRM(data.id)
+          onOpenInCRM(companyId)
         }
-      } catch (e) {
-        console.error('Failed to create company', e)
-        alert('Ошибка при создании компании')
       }
     }
   }
@@ -86,31 +68,11 @@ export default function VEDTab({ initialInn, onOpenInCRM, onCreateInCRM }: Props
     if (onCreateInCRM) {
       return onCreateInCRM(profile)
     }
-    try {
-      const { data } = await api.post('/companies', {
-        inn: profile.inn,
-        name: profile.company_name,
-        region: profile.region,
-        address: profile.address,
-        phone: profile.contact_phone,
-        email: profile.contact_email,
-        website: profile.website,
-        director: profile.director,
-        ogrn: profile.ogrn,
-        activity_main: profile.activity,
-        revenue: profile.revenue,
-        employees: profile.employees,
-        source_orig: profile.source_files?.join(', '),
-        call_status: 'new',
-        pipeline_stage: 'new',
-      })
+    const companyId = await createCompanyFromVed(profile)
+    if (companyId) {
       api.get('/ved/stats').then(({ data }) => setStats(data))
-      return data.id
-    } catch (e) {
-      console.error('Failed to create company', e)
-      alert('Ошибка при создании компании')
-      return null
     }
+    return companyId
   }
 
   return (

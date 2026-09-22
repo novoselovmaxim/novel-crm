@@ -98,6 +98,7 @@ class Company(Base):
     messenger = Column(String, nullable=True)
     next_call_date = Column(Date, nullable=True, index=True)
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    import_source_id = Column(UUID(as_uuid=True), ForeignKey("import_sources.id"), nullable=True, index=True)
     call_count = Column(Integer, default=0)
     last_called_at = Column(DateTime(timezone=True), nullable=True)
     ai_suggestions = Column(JSONB, nullable=True)

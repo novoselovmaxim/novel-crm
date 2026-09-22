@@ -13,10 +13,16 @@ from ..auth import get_current_user
 from ..database import get_db, settings
 from ..models import Company, User
 from ..schemas import CompanyResponse
+from ..services.search_engine import research_company
+from ..ai_search import search_company_info
+from ..ai_qualify import qualify_company
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/research", tags=["research"])
+
+# Field allowlist for save operations
+ALLOWED_FIELDS = ["website", "phone", "email", "activity_main", "ai_summary"]
 
 
 class ResearchRequest(BaseModel):
@@ -33,6 +39,37 @@ class SaveResearchRequest(BaseModel):
     suggestions: dict
 
 
+def _filter_suggestions_by_validation(suggestions: dict, validation: dict) -> dict:
+    """Filter out suggestions that TypeSafe validation flagged as unreliable."""
+    if not validation:
+        return suggestions
+    
+    field_validation_map = {
+        "website": "website_is_official",
+        "phone": "phone_is_direct",
+        "email": "email_is_business",
+        "activity_main": "activity_matches_okved",
+    }
+    
+    filtered = {}
+    for field, suggestion in suggestions.items():
+        validation_key = field_validation_map.get(field)
+        if validation_key and validation_key in validation:
+            val = validation[validation_key]
+            # Only keep suggestions where validation passed (answer >= 0.5 and not needs_review)
+            answer = val.get("answer", 0)
+            needs_review = val.get("needs_review", True)
+            if answer >= 0.5 and not needs_review:
+                filtered[field] = suggestion
+            else:
+                logger.info("Filtered out suggestion for %s due to validation: answer=%.2f, needs_review=%s", 
+                           field, answer, needs_review)
+        else:
+            # No validation for this field - keep it
+            filtered[field] = suggestion
+    return filtered
+
+
 @router.post("/{company_id}")
 async def research_company_endpoint(
     company_id: uuid.UUID,
@@ -40,7 +77,7 @@ async def research_company_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Run multi-source company research."""
+    """Run multi-source company research with validation."""
     available_sources = []
     if settings.brave_api_key:
         available_sources.append("brave")
@@ -61,8 +98,7 @@ async def research_company_endpoint(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    from ..services.search_engine import research_company
-
+    # Use multi-source research (Brave + Exa + Scraping)
     research = await research_company(
         name=company.name or "",
         inn=company.inn or "",
@@ -138,16 +174,43 @@ async def research_company_endpoint(
     if extracted.get("description"):
         ai_suggestions["ai_summary"] = extracted["description"]
 
-    if suggestions:
+    # Run TypeSafe validation on extracted data
+    validation = {}
+    try:
+        from ..ai_search import search_company_info
+        validation_info = await search_company_info(
+            name=company.name or "",
+            inn=company.inn or "",
+            website=company.website or company.focus_link or "",
+            region=company.region or "",
+            okved=company.activity_code or "",
+            revenue=company.revenue or 0,
+            employees=company.employees or 0,
+        )
+        if validation_info.get("validation"):
+            validation = validation_info["validation"]
+            ai_suggestions["validation"] = validation
+    except Exception as e:
+        logger.warning("TypeSafe validation failed in research: %s", e)
+
+    # Filter suggestions based on TypeSafe validation
+    filtered_suggestions = _filter_suggestions_by_validation(suggestions, validation)
+
+    if filtered_suggestions or extracted.get("description"):
         company.ai_suggestions = ai_suggestions
         await db.commit()
         await db.refresh(company)
 
+    # Run qualification (ВЭД check)
+    qualification = await qualify_company(company, db)
+
     return {
         "company_id": company_id,
-        "suggestions": suggestions,
+        "suggestions": filtered_suggestions,
         "ai_summary": extracted.get("description", ""),
-        "has_pending": bool(suggestions),
+        "has_pending": bool(filtered_suggestions),
+        "validation": validation,
+        "qualification": qualification,
         "sources": research.get("sources", []),
         "brave_results": research.get("brave_results", []),
         "exa_results": research.get("exa_results", []),
@@ -240,6 +303,14 @@ async def save_research_data(
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+
+    # Enforce field allowlist
+    invalid_fields = [f for f in request.suggestions.keys() if f not in ALLOWED_FIELDS]
+    if invalid_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fields not allowed for update: {', '.join(invalid_fields)}. Allowed: {', '.join(ALLOWED_FIELDS)}"
+        )
 
     updated_fields = []
     for field, value in request.suggestions.items():

@@ -94,3 +94,19 @@ class VedImportResponse(BaseModel):
     profiles_updated: int
     declarations_inserted: int
     errors: List[str] = []
+
+
+class VedCreateAndLinkRequest(BaseModel):
+    inn: str
+    name: Optional[str] = None
+    region: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    director: Optional[str] = None
+    ogrn: Optional[str] = None
+    activity_main: Optional[str] = None
+    revenue: Optional[int] = None
+    employees: Optional[int] = None
+    source_orig: Optional[str] = None

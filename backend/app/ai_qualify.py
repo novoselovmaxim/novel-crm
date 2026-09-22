@@ -14,12 +14,12 @@ from .models import Company
 
 logger = logging.getLogger(__name__)
 
-QUALIFY_SYSTEM_PROMPT = """Ты — эксперт по ВЭД (внешнеэкономической деятельности). 
-Проанализируй компанию и определи, занимается ли она внешнеэкономической деятельностью, 
-является ли импортёром или экспортёром, работает ли с зарубежными партнёрами, 
+QUALIFY_SYSTEM_PROMPT = """Ты — эксперт по ВЭД (внешнеэкономической деятельности).
+Проанализируй компанию и определи, занимается ли она внешнеэкономической деятельностью,
+является ли импортёром или экспортёром, работает ли с зарубежными партнёрами,
 осуществляет ли валютные платежи.
 
-Оцени пригодность компании как потенциального клиента для сервиса международных 
+Оцени пригодность компании как потенциального клиента для сервиса международных
 валютных переводов (аналог Wise/Revolut для бизнеса в РФ).
 
 Ответь строго в формате JSON без markdown-обёртки:
@@ -70,43 +70,6 @@ async def _search_brave_ved(name: str, inn: str, query: str) -> list[str]:
         return []
 
 
-async def _search_zveno_ved(name: str, inn: str, query: str) -> list[str]:
-    """Search ZVENO Perplexity for VED-related info."""
-    if not settings.zveno_api_key:
-        logger.info("ZVENO not configured, skipping VED search")
-        return []
-
-    try:
-        async with httpx.AsyncClient(timeout=30) as c:
-            payload = {
-                "model": "perplexity/sonar-pro-search",
-                "messages": [
-                    {"role": "system", "content": "Ты — поисковый ассистент. Найди информацию о ВЭД деятельности компании."},
-                    {"role": "user", "content": query},
-                ],
-                "temperature": 0.05,
-            }
-            resp = await c.post(
-                f"{settings.zveno_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.zveno_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            if resp.status_code != 200:
-                logger.warning("ZVENO VED search error %s: %s", resp.status_code, resp.text[:300])
-                return []
-            data = resp.json()
-            if "choices" not in data or not data["choices"]:
-                return []
-            answer = data["choices"][0]["message"].get("content", "") or ""
-            return [answer] if answer else []
-    except Exception:
-        logger.exception("ZVENO VED search failed")
-        return []
-
-
 async def qualify_company(
     company: Company,
     db: AsyncSession,
@@ -140,7 +103,7 @@ async def qualify_company(
         f"Предмет снабжения: {company.supply_subject or '—'}",
     ]
 
-    # 2. Search for VED keywords
+    # 2. Search for VED keywords using Brave (free)
     search_results = []
     ved_keywords = [
         f"{company.name} {company.inn} ВЭД импорт экспорт",
@@ -148,12 +111,9 @@ async def qualify_company(
     ]
 
     for q in ved_keywords:
-        # Brave search
+        # Brave search only (free)
         brave_res = await _search_brave_ved(company.name, company.inn, q)
         search_results.extend(brave_res)
-        # ZVENO search
-        zveno_res = await _search_zveno_ved(company.name, company.inn, q)
-        search_results.extend(zveno_res)
 
     company_text = "\n".join(company_data_lines)
     search_text = "\n".join(search_results[:5]) if search_results else "Результаты поиска недоступны"

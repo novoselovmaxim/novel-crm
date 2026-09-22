@@ -60,6 +60,7 @@ export interface Company {
   call_count: number
   next_call_date: string | null
   assigned_to: string | null
+  import_source_id: string | null
   ai_suggestions?: Record<string, any> | null
   ai_summary?: string | null
   last_called_at?: string | null

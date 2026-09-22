@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/client'
 import { VedProfileDetail, VedDeclaration } from '../types/ved'
+import { createCompanyFromVed } from '../utils/ved'
 
 interface Props {
   inn: string | null
@@ -115,31 +116,12 @@ export default function VEDProfilePanel({ inn, onClose, onOpenInCRM, onCreateInC
         onOpenInCRM(newCompanyId)
       }
     } else {
-      try {
-        const { data } = await api.post('/companies', {
-          inn: profile.inn,
-          name: profile.company_name,
-          region: profile.region,
-          address: profile.address,
-          phone: profile.contact_phone,
-          email: profile.contact_email,
-          website: profile.website,
-          director: profile.director,
-          ogrn: profile.ogrn,
-          activity_main: profile.activity,
-          revenue: profile.revenue,
-          employees: profile.employees,
-          source_orig: profile.source_files?.join(', '),
-          call_status: 'new',
-          pipeline_stage: 'new',
-        })
+      const companyId = await createCompanyFromVed(profile)
+      if (companyId) {
         onClose()
         if (onOpenInCRM) {
-          onOpenInCRM(data.id)
+          onOpenInCRM(companyId)
         }
-      } catch (e) {
-        console.error('Failed to create company', e)
-        alert('Ошибка при создании компании')
       }
     }
   }

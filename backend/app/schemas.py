@@ -95,6 +95,7 @@ class CompanyBase(BaseModel):
     messenger: Optional[str] = None
     next_call_date: Optional[date] = None
     assigned_to: Optional[uuid.UUID] = None
+    import_source_id: Optional[uuid.UUID] = None
 
 class CompanyCreate(CompanyBase):
     pass
@@ -157,6 +158,7 @@ class CompanyUpdate(BaseModel):
     messenger: Optional[str] = None
     next_call_date: Optional[date] = None
     assigned_to: Optional[uuid.UUID] = None
+    import_source_id: Optional[uuid.UUID] = None
 
 class CompanyResponse(CompanyBase):
     id: uuid.UUID

@@ -3,7 +3,7 @@ import copy
 import json
 import logging
 import uuid
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -18,6 +18,9 @@ from ..schemas import AiApplyRequest
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+
+# Field allowlist for apply/save operations
+ALLOWED_FIELDS = ["website", "phone", "email", "activity_main", "ai_summary"]
 
 def _has_value(val) -> bool:
     return val is not None and val != ""
@@ -43,6 +46,10 @@ async def ai_search_company(
         name=company.name or "",
         inn=company.inn or "",
         website=company.website or company.focus_link or "",
+        region=company.region or "",
+        okved=company.activity_code or "",
+        revenue=company.revenue or 0,
+        employees=company.employees or 0,
     )
 
     suggestions = {}
@@ -98,7 +105,11 @@ async def ai_search_company(
     if info.get("description"):
         ai_suggestions["ai_summary"] = info["description"]
 
-    if suggestions:
+    # Store validation results separately
+    if info.get("validation"):
+        ai_suggestions["validation"] = info["validation"]
+
+    if suggestions or info.get("validation"):
         company.ai_suggestions = ai_suggestions
         await db.commit()
         await db.refresh(company)
@@ -109,6 +120,7 @@ async def ai_search_company(
         "suggestions": suggestions,
         "ai_summary": info.get("description", ""),
         "has_pending": bool(suggestions),
+        "validation": info.get("validation", {}),
         "sources": info.get("sources", []),
         "company": CompanyResponse.model_validate(company).model_dump(),
     }
@@ -127,6 +139,10 @@ async def ai_apply_field(
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+
+    # Enforce field allowlist
+    if request.field not in ALLOWED_FIELDS:
+        raise HTTPException(status_code=400, detail=f"Field '{request.field}' is not allowed for update")
 
     ai_suggestions = company.ai_suggestions or {}
     pending = ai_suggestions.get("pending", {})

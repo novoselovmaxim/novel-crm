@@ -11,6 +11,7 @@ import GuideModal, { shouldShowGuide } from '../components/GuideModal'
 import StatusBadge from '../components/StatusBadge'
 import FollowUpDashboard from '../components/FollowUpDashboard'
 import { DashboardStats } from '../types'
+import { createCompanyFromVed } from '../utils/ved'
 
 const tabs = [
   { key: 'companies', label: 'Компании' },
@@ -131,30 +132,8 @@ export default function Dashboard() {
           initialInn={initialVedInn || undefined}
           onOpenInCRM={(id) => { setSelectedCompanyId(id); setActiveTab('companies') }}
           onCreateInCRM={async (profile) => {
-            try {
-              const { data } = await api.post('/companies', {
-                inn: profile.inn,
-                name: profile.company_name,
-                region: profile.region,
-                address: profile.address,
-                phone: profile.contact_phone,
-                email: profile.contact_email,
-                website: profile.website,
-                director: profile.director,
-                ogrn: profile.ogrn,
-                activity_main: profile.activity,
-                revenue: profile.revenue,
-                employees: profile.employees,
-                source_orig: profile.source_files?.join(', '),
-                call_status: 'new',
-                pipeline_stage: 'new',
-              })
-              return data.id
-            } catch (e) {
-              console.error('Failed to create company', e)
-              alert('Ошибка при создании компании')
-              return null
-            }
+            const companyId = await createCompanyFromVed(profile)
+            return companyId
           }}
         />}
         {activeTab === 'pipeline' && (

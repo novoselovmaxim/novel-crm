@@ -19,10 +19,12 @@ class Settings(BaseSettings):
     base_url: str = "https://novel.maxnov.ru"
     zveno_api_key: str = ""
     zveno_base_url: str = "https://api.zveno.ai/v1"
-    llm_model: str = "google/gemma-4-26b-a4b-it:free"
+    llm_model: str = "nex-agi/nex-n2.5-pro:free"
     llm_model_qualify: str = "nvidia/nemotron-3-super-120b-a12b:free"
     brave_api_key: str = ""
     exa_api_key: str = ""
+    typesafe_api_key: str = ""
+    typesafe_base_url: str = "https://api.typesafe.ai"
 
     @property
     def db_url(self) -> str:

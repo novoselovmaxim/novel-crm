@@ -14,8 +14,9 @@ from ..schemas_ved import (
     VedProfilesResponse,
     VedStatsResponse,
     VedImportResponse,
+    VedCreateAndLinkRequest,
 )
-from ..auth import get_current_user
+from ..auth import get_current_user, require_admin_or_lead
 from ..import_ved import import_ved_files
 
 router = APIRouter(prefix="/api/ved", tags=["ved"])
@@ -255,11 +256,8 @@ async def link_profile(
     inn: str,
     company_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_admin_or_lead),
 ):
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
-
     result = await db.execute(
         select(VedCompanyProfile).where(VedCompanyProfile.inn == inn)
     )
@@ -270,3 +268,45 @@ async def link_profile(
     profile.company_id = company_id
     await db.commit()
     return {"status": "linked"}
+
+
+@router.post("/create-and-link")
+async def create_and_link(
+    request: VedCreateAndLinkRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin_or_lead),
+):
+    result = await db.execute(select(Company).where(Company.inn == request.inn))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Company with this INN already exists")
+
+    company = Company(
+        inn=request.inn,
+        name=request.name or "",
+        region=request.region,
+        address=request.address,
+        phone=request.phone,
+        email=request.email,
+        website=request.website,
+        director=request.director,
+        ogrn=request.ogrn,
+        activity_main=request.activity_main,
+        revenue=request.revenue,
+        employees=request.employees,
+        source_orig=request.source_orig,
+        call_status="new",
+        pipeline_stage="new",
+    )
+    db.add(company)
+    await db.flush()
+
+    ved_result = await db.execute(
+        select(VedCompanyProfile).where(VedCompanyProfile.inn == request.inn)
+    )
+    ved_profile = ved_result.scalar_one_or_none()
+    if ved_profile:
+        ved_profile.company_id = company.id
+
+    await db.commit()
+    await db.refresh(company)
+    return {"company_id": str(company.id)}

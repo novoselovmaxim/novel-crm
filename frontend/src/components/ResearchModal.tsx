@@ -2,16 +2,34 @@ import { useState, useRef, useEffect } from 'react'
 import api from '../api/client'
 import { Company } from '../types'
 
+interface ValidationItem {
+  answer: number
+  confidence: number | null
+  needs_review: boolean
+}
+
+interface Qualification {
+  score: number
+  has_ved: boolean | null
+  is_importer: boolean | null
+  is_exporter: boolean | null
+  has_foreign_payments: boolean | null
+  has_international_partners: boolean | null
+  reasoning: string
+  evidence: string[]
+  needs_review: boolean
+}
+
 interface ResearchResult {
   company_id: string
   suggestions: Record<string, { current: string; suggested: string; label: string; mode?: string }>
   ai_summary: string
   has_pending: boolean
+  validation: Record<string, ValidationItem>
+  qualification: Qualification
   sources: { name: string; status: string; count: number; error?: string }[]
   brave_results: { title: string; url: string; description: string; age: string }[]
   exa_results: { title: string; url: string; text: string; score: number }[]
-  zveno_answer: string
-  zveno_results: { url: string; title: string }[]
   scraped_texts: string[]
   all_urls: string[]
   raw_text_preview: string
@@ -124,6 +142,30 @@ function StructuredContent({ text }: { text: string }) {
   )
 }
 
+function ScoreBadge({ score }: { score: number }) {
+  const color = score >= 70 ? 'bg-success/20 text-success' :
+                score >= 40 ? 'bg-orange-500/20 text-orange-400' :
+                'bg-error/20 text-error'
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${color}`}>
+      {score}
+    </span>
+  )
+}
+
+function ValidationDot({ item }: { item: ValidationItem }) {
+  if (item.needs_review) {
+    return <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" title="Требует проверки" />
+  }
+  if (item.answer >= 0.7) {
+    return <span className="w-2 h-2 rounded-full bg-success shrink-0" title="Надёжно" />
+  }
+  if (item.answer >= 0.5) {
+    return <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" title="Сомнительно" />
+  }
+  return <span className="w-2 h-2 rounded-full bg-error shrink-0" title="Ненадёжно" />
+}
+
 export default function ResearchModal({
   company,
   onClose,
@@ -135,12 +177,12 @@ export default function ResearchModal({
   onApplySuggestion?: (field: string, value: string) => void
   onUpdateCompany?: (data: Partial<Company>) => void
 }) {
-  const [selectedSources, setSelectedSources] = useState<string[]>(['brave', 'exa', 'zveno'])
+  const [selectedSources, setSelectedSources] = useState<string[]>(['brave', 'exa'])
   const [customQuery, setCustomQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ResearchResult | null>(null)
   const [error, setError] = useState('')
-  const [activeResultTab, setActiveResultTab] = useState<'brave' | 'exa' | 'zveno' | 'content' | 'suggestions'>('brave')
+  const [activeResultTab, setActiveResultTab] = useState<'summary' | 'brave' | 'exa' | 'content' | 'suggestions'>('summary')
 
   const [followUpQuestion, setFollowUpQuestion] = useState('')
   const [followUpLoading, setFollowUpLoading] = useState(false)
@@ -239,7 +281,6 @@ export default function ResearchModal({
     try {
       const context = result
         ? [
-            result.zveno_answer && `ZVENO: ${result.zveno_answer.slice(0, 1000)}`,
             result.ai_summary && `AI: ${result.ai_summary.slice(0, 1000)}`,
             ...result.brave_results.slice(0, 3).map(r => `Brave: ${r.title} — ${r.description}`),
             ...result.exa_results.slice(0, 3).map(r => `Exa: ${r.title} — ${(r.text || '').slice(0, 300)}`),
@@ -261,6 +302,16 @@ export default function ResearchModal({
 
   const sourceStatus = (name: string) => result?.sources?.find(s => s.name === name)
 
+  const validationLabels: Record<string, string> = {
+    phone_is_direct: 'Телефон прямой',
+    phone_region_match: 'Регион телефона',
+    email_is_business: 'Email рабочий',
+    website_is_official: 'Сайт официальный',
+    activity_matches_okved: 'Деятельность совпадает с ОКВЭД',
+    data_consistency: 'Согласованность данных',
+    overall_completeness: 'Полнота данных',
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-surface w-[950px] max-h-[85vh] rounded-xl shadow-2xl flex flex-col overflow-hidden border border-muted/10">
@@ -275,11 +326,10 @@ export default function ResearchModal({
 
         {/* Config section */}
         <div className="px-5 py-3 border-b border-muted/10 shrink-0">
-          {/* Source toggles */}
           <div className="flex items-center gap-3 mb-3">
             <span className="text-xs text-muted font-medium">Источники:</span>
-            {['brave', 'exa', 'zveno'].map(src => {
-              const labels: Record<string, string> = { brave: 'Brave Search', exa: 'Exa Semantic', zveno: 'ZVENO Sonar' }
+            {['brave', 'exa'].map(src => {
+              const labels: Record<string, string> = { brave: 'Brave Search', exa: 'Exa Semantic' }
               const st = sourceStatus(src)
               return (
                 <label key={src} className="flex items-center gap-1.5 cursor-pointer">
@@ -311,7 +361,6 @@ export default function ResearchModal({
             )}
           </div>
 
-          {/* Preset buttons */}
           <div className="flex flex-wrap gap-1.5 mb-2">
             {QUERY_PRESETS.map(p => (
               <button
@@ -332,7 +381,6 @@ export default function ResearchModal({
             )}
           </div>
 
-          {/* Custom query — auto-resize textarea */}
           <div className="flex gap-2">
             <AutoResizeTextarea
               value={customQuery}
@@ -351,12 +399,12 @@ export default function ResearchModal({
           </div>
         </div>
 
-        {/* Loading indicators */}
+        {/* Loading */}
         {loading && (
           <div className="px-5 py-3 border-b border-muted/10 shrink-0">
             <div className="flex gap-4">
               {selectedSources.map(src => {
-                const labels: Record<string, string> = { brave: 'Brave', exa: 'Exa', zveno: 'ZVENO' }
+                const labels: Record<string, string> = { brave: 'Brave', exa: 'Exa' }
                 return (
                   <div key={src} className="flex items-center gap-2 text-xs text-muted">
                     <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -372,14 +420,12 @@ export default function ResearchModal({
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="px-5 py-2 bg-error/10 border-b border-error/20 text-xs text-error shrink-0">
             {error}
           </div>
         )}
 
-        {/* Saved message */}
         {savedMsg && (
           <div className="px-5 py-2 bg-success/10 border-b border-success/20 text-xs text-success shrink-0">
             ✓ {savedMsg}
@@ -389,12 +435,11 @@ export default function ResearchModal({
         {/* Results */}
         {result && (
           <div className="flex-1 overflow-y-auto">
-            {/* Result tabs */}
             <div className="flex border-b border-muted/10 shrink-0">
               {[
+                { key: 'summary', label: 'Обзор' },
                 { key: 'brave', label: `Brave (${result.brave_results.length})` },
                 { key: 'exa', label: `Exa (${result.exa_results.length})` },
-                { key: 'zveno', label: 'ZVENO' },
                 { key: 'content', label: `Контент (${result.scraped_texts.length})` },
                 { key: 'suggestions', label: `Данные (${Object.keys(result.suggestions).length})` },
               ].map(tab => (
@@ -413,7 +458,116 @@ export default function ResearchModal({
             </div>
 
             <div className="p-4">
-              {/* Brave results */}
+              {/* SUMMARY TAB */}
+              {activeResultTab === 'summary' && (
+                <div className="space-y-4">
+                  {/* Key facts */}
+                  <div className="p-3 bg-bg rounded-lg border border-muted/10">
+                    <h4 className="text-[11px] font-bold text-accent uppercase tracking-wide mb-2">Ключевые данные</h4>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted w-20 shrink-0">Телефон:</span>
+                        <span className="text-text">{company.phone || '—'}</span>
+                        {result.validation.phone_is_direct && <ValidationDot item={result.validation.phone_is_direct} />}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted w-20 shrink-0">Email:</span>
+                        <span className="text-text">{company.email || '—'}</span>
+                        {result.validation.email_is_business && <ValidationDot item={result.validation.email_is_business} />}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted w-20 shrink-0">Сайт:</span>
+                        <span className="text-text">{company.website || '—'}</span>
+                        {result.validation.website_is_official && <ValidationDot item={result.validation.website_is_official} />}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted w-20 shrink-0">ОКВЭД:</span>
+                        <span className="text-text">{company.activity_code || '—'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted">Деятельность: </span>
+                        <span className="text-text">{company.activity_main || '—'}</span>
+                        {result.validation.activity_matches_okved && <ValidationDot item={result.validation.activity_matches_okved} />}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Validation */}
+                  {Object.keys(result.validation).length > 0 && (
+                    <div className="p-3 bg-bg rounded-lg border border-muted/10">
+                      <h4 className="text-[11px] font-bold text-accent uppercase tracking-wide mb-2">Достоверность данных</h4>
+                      <div className="space-y-1.5">
+                        {Object.entries(result.validation).map(([key, item]) => (
+                          <div key={key} className="flex items-center gap-2 text-[11px]">
+                            <ValidationDot item={item} />
+                            <span className="text-text/80">{validationLabels[key] || key}</span>
+                            <span className="ml-auto text-muted">{(item.answer * 100).toFixed(0)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Qualification */}
+                  {result.qualification && (
+                    <div className="p-3 bg-bg rounded-lg border border-muted/10">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="text-[11px] font-bold text-accent uppercase tracking-wide">Квалификация лида</h4>
+                        <ScoreBadge score={result.qualification.score} />
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 mb-2 text-[11px]">
+                        {result.qualification.has_ved !== null && (
+                          <span className={`px-2 py-0.5 rounded ${result.qualification.has_ved ? 'bg-success/20 text-success' : 'bg-error/20 text-error'}`}>
+                            ВЭД: {result.qualification.has_ved ? 'да' : 'нет'}
+                          </span>
+                        )}
+                        {result.qualification.is_importer !== null && (
+                          <span className={`px-2 py-0.5 rounded ${result.qualification.is_importer ? 'bg-success/20 text-success' : 'bg-muted/20 text-muted'}`}>
+                            Импортёр: {result.qualification.is_importer ? 'да' : 'нет'}
+                          </span>
+                        )}
+                        {result.qualification.is_exporter !== null && (
+                          <span className={`px-2 py-0.5 rounded ${result.qualification.is_exporter ? 'bg-success/20 text-success' : 'bg-muted/20 text-muted'}`}>
+                            Экспортёр: {result.qualification.is_exporter ? 'да' : 'нет'}
+                          </span>
+                        )}
+                        {result.qualification.has_foreign_payments !== null && (
+                          <span className={`px-2 py-0.5 rounded ${result.qualification.has_foreign_payments ? 'bg-success/20 text-success' : 'bg-muted/20 text-muted'}`}>
+                            Валютные платежи: {result.qualification.has_foreign_payments ? 'да' : 'нет'}
+                          </span>
+                        )}
+                      </div>
+
+                      {result.qualification.evidence.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-[10px] font-semibold text-muted mb-1">Доказательства:</p>
+                          {result.qualification.evidence.map((e, i) => (
+                            <div key={i} className="text-[11px] text-text/80 flex items-start gap-1.5 mb-0.5">
+                              <span className="text-success shrink-0">✓</span>
+                              <span>{e}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {result.qualification.reasoning && (
+                        <p className="text-[11px] text-text/70 mt-2 leading-relaxed">{result.qualification.reasoning}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* AI summary */}
+                  {result.ai_summary && (
+                    <div className="p-3 bg-indigo-600/5 border border-indigo-600/20 rounded text-xs text-text leading-relaxed">
+                      <span className="font-semibold text-indigo-400">📝 AI-резюме:</span>{' '}
+                      <StructuredContent text={result.ai_summary.slice(0, 800)} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* BRAVE TAB */}
               {activeResultTab === 'brave' && (
                 <div className="space-y-2">
                   {result.brave_results.length === 0 ? (
@@ -427,7 +581,7 @@ export default function ResearchModal({
                             <a href={r.url} target="_blank" rel="noopener" className="text-xs font-medium text-accent hover:underline block truncate">
                               {r.title}
                             </a>
-                            <p className="text-[11px] text-muted mt-0.5 line-clamp-2">{r.description}</p>
+                            <p className="text-[11px] text-muted mt-0.5 line-clamp-3">{r.description}</p>
                             {r.age && <span className="text-[10px] text-muted/50 mt-0.5 block">{r.age}</span>}
                           </div>
                         </div>
@@ -437,7 +591,7 @@ export default function ResearchModal({
                 </div>
               )}
 
-              {/* Exa results */}
+              {/* EXA TAB */}
               {activeResultTab === 'exa' && (
                 <div className="space-y-2">
                   {result.exa_results.length === 0 ? (
@@ -465,30 +619,7 @@ export default function ResearchModal({
                 </div>
               )}
 
-              {/* ZVENO */}
-              {activeResultTab === 'zveno' && (
-                <div className="space-y-3">
-                  {result.zveno_answer ? (
-                    <div className="p-3 bg-indigo-600/5 border border-indigo-600/20 rounded text-xs text-text leading-relaxed">
-                      <StructuredContent text={result.zveno_answer} />
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted">Нет ответа</p>
-                  )}
-                  {result.zveno_results.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-semibold text-muted mb-1">Источники ZVENO:</p>
-                      {result.zveno_results.map((r, i) => (
-                        <div key={i} className="text-[11px]">
-                          <a href={r.url} target="_blank" rel="noopener" className="text-accent hover:underline">{r.title || r.url}</a>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Scraped content — structured display */}
+              {/* CONTENT TAB */}
               {activeResultTab === 'content' && (
                 <div className="space-y-3">
                   {result.all_urls.length > 0 && (
@@ -504,24 +635,45 @@ export default function ResearchModal({
                   {result.scraped_texts.length === 0 ? (
                     <p className="text-xs text-muted">Нет контента для отображения</p>
                   ) : (
-                    result.scraped_texts.map((text, i) => (
-                      <div key={i} className="p-3 bg-bg rounded border border-muted/10">
-                        <p className="text-[10px] font-semibold text-accent mb-2">Страница {i + 1}:</p>
-                        <StructuredContent text={text} />
-                      </div>
-                    ))
+                    result.scraped_texts.map((text, i) => {
+                      const sections = text.split(/\n{2,}/).filter(s => s.trim().length > 20)
+                      return (
+                        <div key={i} className="p-3 bg-bg rounded border border-muted/10">
+                          <p className="text-[10px] font-semibold text-accent mb-2">Страница {i + 1} ({sections.length} секций):</p>
+                          <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                            {sections.slice(0, 15).map((section, j) => {
+                              const trimmed = section.trim()
+                              if (trimmed.length > 300) {
+                                return (
+                                  <details key={j} className="text-[11px] text-text/80">
+                                    <summary className="cursor-pointer text-muted hover:text-text">
+                                      {trimmed.slice(0, 80)}...
+                                    </summary>
+                                    <div className="mt-1 whitespace-pre-wrap leading-relaxed">{trimmed}</div>
+                                  </details>
+                                )
+                              }
+                              return (
+                                <div key={j} className="text-[11px] text-text/80 leading-relaxed whitespace-pre-wrap">
+                                  {trimmed}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               )}
 
-              {/* Suggestions */}
+              {/* SUGGESTIONS TAB */}
               {activeResultTab === 'suggestions' && (
                 <div className="space-y-3">
                   {Object.keys(result.suggestions).length === 0 ? (
                     <p className="text-xs text-muted">Нет предложений по обновлению данных</p>
                   ) : (
                     <>
-                      {/* Save all button */}
                       <div className="flex items-center gap-2 mb-2">
                         <button
                           onClick={saveAllSuggestions}
@@ -533,36 +685,43 @@ export default function ResearchModal({
                         {savedMsg && <span className="text-[10px] text-success">{savedMsg}</span>}
                       </div>
 
-                      {Object.entries(result.suggestions).map(([field, val]) => (
-                        <div key={field} className="p-2 bg-yellow-500/5 border border-yellow-500/20 rounded text-xs">
-                          <div className="text-yellow-400 font-semibold mb-1">💡 {val.label}</div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted line-through">{val.current || '—'}</span>
-                            <span className="text-accent">→</span>
-                            <span className="text-text font-medium">{val.suggested}</span>
-                            <button
-                              onClick={() => applySuggestion(field, val.suggested)}
-                              className="ml-auto px-2 py-0.5 bg-success/20 hover:bg-success/30 text-success text-[10px] rounded"
-                            >Принять</button>
-                            <button
-                              onClick={() => rejectSuggestion(field)}
-                              className="px-2 py-0.5 bg-error/20 hover:bg-error/30 text-error text-[10px] rounded"
-                            >✕</button>
+                      {Object.entries(result.suggestions).map(([field, val]) => {
+                        const valKey = field === 'activity_main' ? 'activity_matches_okved'
+                          : field === 'phone' ? 'phone_is_direct'
+                          : field === 'email' ? 'email_is_business'
+                          : field === 'website' ? 'website_is_official'
+                          : null
+                        const vItem = valKey ? result.validation[valKey] : null
+                        return (
+                          <div key={field} className="p-2 bg-yellow-500/5 border border-yellow-500/20 rounded text-xs">
+                            <div className="flex items-center gap-2 text-yellow-400 font-semibold mb-1">
+                              {vItem && <ValidationDot item={vItem} />}
+                              <span>💡 {val.label}</span>
+                              {vItem && (
+                                <span className="text-[10px] font-normal text-muted">
+                                  достоверность: {(vItem.answer * 100).toFixed(0)}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted line-through">{val.current || '—'}</span>
+                              <span className="text-accent">→</span>
+                              <span className="text-text font-medium">{val.suggested}</span>
+                              <button
+                                onClick={() => applySuggestion(field, val.suggested)}
+                                className="ml-auto px-2 py-0.5 bg-success/20 hover:bg-success/30 text-success text-[10px] rounded"
+                              >Принять</button>
+                              <button
+                                onClick={() => rejectSuggestion(field)}
+                                className="px-2 py-0.5 bg-error/20 hover:bg-error/30 text-error text-[10px] rounded"
+                              >✕</button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </>
                   )}
 
-                  {/* AI summary */}
-                  {(result.ai_summary || company.ai_summary) && (
-                    <div className="p-2 bg-indigo-600/5 border border-indigo-600/20 rounded text-xs text-text leading-relaxed">
-                      <span className="font-semibold text-indigo-400">📝 AI:</span>{' '}
-                      <StructuredContent text={(result.ai_summary || company.ai_summary || '').slice(0, 500)} />
-                    </div>
-                  )}
-
-                  {/* Raw text preview */}
                   {result.raw_text_preview && (
                     <details className="mt-2">
                       <summary className="text-[10px] text-muted cursor-pointer hover:text-text">
@@ -577,11 +736,10 @@ export default function ResearchModal({
               )}
             </div>
 
-            {/* Follow-up question section */}
+            {/* Follow-up */}
             <div className="px-4 pb-4 border-t border-muted/10 pt-3">
               <p className="text-[10px] font-semibold text-muted mb-2 uppercase tracking-wider">Задать вопрос по результатам</p>
 
-              {/* History */}
               {followUpHistory.length > 0 && (
                 <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
                   {followUpHistory.map((h, i) => (
@@ -593,14 +751,12 @@ export default function ResearchModal({
                 </div>
               )}
 
-              {/* Current answer */}
               {followUpAnswer && !followUpHistory.some(h => h.a === followUpAnswer) && (
                 <div className="p-2 bg-indigo-600/5 border border-indigo-600/20 rounded text-[11px] text-text mb-2">
                   {followUpAnswer}
                 </div>
               )}
 
-              {/* Input */}
               <div className="flex gap-2">
                 <input
                   value={followUpQuestion}

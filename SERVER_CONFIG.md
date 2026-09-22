@@ -363,6 +363,21 @@ ls /etc/nginx/sites-enabled/disabled/
 
 6. **Cloudstream is inactive** — no current need. Stream block removed to avoid nginx errors.
 
+7. **DATABASE BACKUP IS MANDATORY** — Never run `docker compose down -v` or any destructive operation without verified backup.
+   - Daily backup configured at 03:00 via `/opt/novel-crm/backup_to_telegram.sh` → Telegram bot (token: REDACTED_BACKUP_TOKEN, chat: REDACTED_CHAT_ID)
+   - Backup stored locally in `/opt/novel-crm/backups/` (7 days retention, ~15MB each)
+   - **Before ANY `docker compose down -v`, `docker volume rm`, or DB migration**: verify backup exists and is restorable
+   - Lost 73,312 companies + all activity/history on 2026-09-18 due to `docker compose down -v` without backup
+   - Recovered 39,453 companies from local Excel exports; original data with full history (pipeline, activities, communications, meetings) LOST PERMANENTLY
+
+8. **Cloudstream is inactive** — no current need. Stream block removed to avoid nginx errors.
+
+9. **DATABASE ARCHITECTURE** — PostgreSQL runs in separate container (`novel_crm_postgres`) with persistent volume (`novel-crm_pgdata`). Application runs in `novel_crm_backend` container. This separation allows:
+   - Independent scaling of DB and app
+   - Safe container rebuilds without data loss
+   - Point-in-time recovery via pg_dump
+   - Daily automated pg_dump to Telegram bot
+
 ---
 
 ## Future Improvements (Not Implemented)

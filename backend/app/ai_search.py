@@ -5,16 +5,20 @@ Flow:
   2. Scrape top URLs from Brave results
   3. Send all raw data -> ZVENO GPT (free model) for structured extraction
   4. Regex extraction as last resort
+  5. Format validation
+  6. TypeSafe Jev validation (optional)
 """
 import json
 import logging
 import re
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
 from .database import settings
+from .services import validate_company_data
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,11 @@ AGGREGATOR_DOMAINS = frozenset({
 })
 
 KEYS = ("website", "phone", "email", "activity", "description")
+
+# Format validation patterns
+PHONE_PATTERN = re.compile(r"^\+?7[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}$")
+EMAIL_PATTERN = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.+-]+$")
+URL_PATTERN = re.compile(r"^https?://[\w.-]+\.[a-z]{2,}(/.*)?$", re.IGNORECASE)
 
 SEARCH_SYSTEM_PROMPT = """Ты — поисковый ассистент. Ищи информацию о российской компании по запросу и возвращай данные.
 
@@ -278,7 +287,115 @@ def _extract_with_regex(texts: list[str]) -> dict:
     return result
 
 
-async def search_company_info(name: str, inn: str = "", website: str = "") -> dict:
+def _validate_format(extracted: dict, company_region: str = "") -> dict:
+    """Validate and clean extracted fields by format."""
+    validated = {}
+
+    website = extracted.get("website", "").strip()
+    if website:
+        if not website.startswith(("http://", "https://")):
+            website = "https://" + website
+        if URL_PATTERN.match(website):
+            domain = urlparse(website).netloc.lower()
+            if not _is_company_domain(domain):
+                logger.warning("Filtered aggregator domain: %s", domain)
+                website = ""
+        else:
+            website = ""
+    validated["website"] = website
+
+    phone = extracted.get("phone", "").strip()
+    if phone:
+        normalized = re.sub(r"[\s\-()]+", "", phone)
+        if not normalized.startswith("+"):
+            normalized = "+" + normalized if not normalized.startswith("7") else "+7" + normalized[1:]
+        if PHONE_PATTERN.match(normalized):
+            if company_region:
+                region_codes = {
+                    "Москва": ["495", "499", "985", "986", "987"],
+                    "Санкт-Петербург": ["812", "911", "921", "931", "951", "961"],
+                }
+                code = normalized[2:5] if normalized.startswith("+7") else ""
+                if code and company_region in region_codes and code not in region_codes[company_region]:
+                    logger.warning("Phone region mismatch: %s vs %s", code, company_region)
+            validated["phone"] = normalized
+        else:
+            phone = ""
+    validated["phone"] = phone
+
+    email = extracted.get("email", "").strip().lower()
+    if email and EMAIL_PATTERN.match(email):
+        validated["email"] = email
+    else:
+        email = ""
+    validated["email"] = email
+
+    activity = extracted.get("activity", "").strip()
+    if activity:
+        activity = activity[:200]
+        if 10 <= len(activity) <= 200:
+            validated["activity"] = activity
+        else:
+            activity = ""
+    validated["activity"] = activity
+
+    description = extracted.get("description", "").strip()
+    if description:
+        validated["description"] = description[:500]
+    else:
+        validated["description"] = ""
+
+    return validated
+
+
+async def _typesafe_validate(
+    company_name: str,
+    inn: str,
+    website: str,
+    phone: str,
+    email: str,
+    activity: str,
+    region: str = "",
+    okved: str = "",
+    revenue: int = 0,
+    employees: int = 0,
+) -> dict:
+    """Run TypeSafe Jev validation on extracted data."""
+    try:
+        results = await validate_company_data(
+            company_name=company_name,
+            inn=inn,
+            website=website or None,
+            phone=phone or None,
+            email=email or None,
+            activity=activity or None,
+            region=region or None,
+            okved=okved or None,
+            revenue=revenue or None,
+            employees=employees or None,
+        )
+        validation_result = {}
+        for r in results:
+            validation_result[r.field] = {
+                "answer": r.answer,
+                "confidence": r.confidence,
+                "needs_review": r.needs_review,
+            }
+        return validation_result
+    except Exception as e:
+        logger.warning("TypeSafe validation failed: %s", e)
+        return {}
+
+
+async def search_company_info(
+    name: str,
+    inn: str = "",
+    website: str = "",
+    region: str = "",
+    okved: str = "",
+    revenue: int = 0,
+    employees: int = 0,
+) -> dict:
     """Multi-source search with LLM extraction (Brave + ZVENO GPT free model)."""
 
     # 1. Brave search
@@ -338,14 +455,32 @@ async def search_company_info(name: str, inn: str = "", website: str = "") -> di
         logger.info("GPT extraction empty, using regex fallback")
         extracted = _extract_with_regex(scraped_texts)
 
-    # 6. Build result
+    # 6. Format validation
+    validated = _validate_format(extracted, company_region=region)
+
+    # 7. TypeSafe Jev validation
+    validation = await _typesafe_validate(
+        company_name=name,
+        inn=inn,
+        website=validated.get("website", ""),
+        phone=validated.get("phone", ""),
+        email=validated.get("email", ""),
+        activity=validated.get("activity", ""),
+        region=region,
+        okved=okved,
+        revenue=revenue,
+        employees=employees,
+    )
+
+    # 8. Build result
     result = {
-        "website": extracted.get("website", ""),
-        "phone": extracted.get("phone", ""),
-        "email": extracted.get("email", ""),
-        "activity": extracted.get("activity", ""),
-        "description": extracted.get("description", ""),
+        "website": validated.get("website", ""),
+        "phone": validated.get("phone", ""),
+        "email": validated.get("email", ""),
+        "activity": validated.get("activity", ""),
+        "description": validated.get("description", ""),
         "sources": brave_snippets[:5],
         "website_candidates": prioritized[:5],
+        "validation": validation,
     }
     return result
