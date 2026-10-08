@@ -8,6 +8,7 @@ from .database import get_db
 from .models import create_tables
 from .models_ved import create_ved_tables
 from .routers import auth, companies, dashboard, telegram, import_routes, availability, pipeline, tracking, communications, follow_ups, ai_search, research, ved_routes
+import os
 from .notifications import notifier
 from .telegram_webhook import router as telegram_webhook_router, start_polling, stop_polling
 from .scheduler import create_scheduler
@@ -47,11 +48,32 @@ async def startup():
     global scheduler
     await create_tables()
     await create_ved_tables()
-    await notifier.initialize()
-    try:
-        await start_polling()
-    except Exception as e:
-        print(f"Telegram polling init failed (non-fatal): {e}")
+    
+    # Initialize notifier (skip Telegram connection check in webhook mode)
+    tg_mode = os.getenv("TG_BOT_MODE", "webhook")
+    if tg_mode == "polling":
+        await notifier.initialize()
+    else:
+        # In webhook mode, just mark as initialized without connecting to TG API
+        notifier._initialized = True
+        logger = __import__('logging').getLogger(__name__)
+        logger.info("Telegram notifier initialized in webhook mode (no TG API connection)")
+    
+    # Start polling only in polling mode
+    if tg_mode == "polling":
+        try:
+            await start_polling()
+        except Exception as e:
+            print(f"Telegram polling init failed (non-fatal): {e}")
+    else:
+        # Ensure webhook is deleted if switching from polling
+        try:
+            from telegram import Bot
+            bot = Bot(token=os.getenv("TG_BOT_TOKEN", ""))
+            await bot.delete_webhook(drop_pending_updates=True)
+        except Exception:
+            pass
+    
     scheduler = create_scheduler()
     scheduler.start()
     print("Scheduler started")
