@@ -1,8 +1,10 @@
 import os
 import asyncio
 import logging
+import hmac
+import hashlib
 from datetime import date, datetime, timezone
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Header
 from sqlalchemy import select, func
 from telegram import Bot, Update
 
@@ -13,11 +15,31 @@ from app.notifications import notifier
 logger = logging.getLogger(__name__)
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
+WEBHOOK_SECRET_TOKEN = os.getenv("TG_WEBHOOK_SECRET_TOKEN", "")
+
+# Mode: "polling" or "webhook" - webhook is better for VPS in Russia (TG blocked)
+TG_BOT_MODE = os.getenv("TG_BOT_MODE", "webhook")
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
 
 _polling_task = None
 _bot_instance = None
+
+async def verify_webhook_secret(x_telegram_bot_api_secret_token: str | None = Header(None)):
+    """Verify that the webhook request comes from Telegram using the secret token."""
+    if not WEBHOOK_SECRET_TOKEN:
+        logger.warning("TG_WEBHOOK_SECRET_TOKEN not set, skipping webhook validation")
+        return True
+    
+    if not x_telegram_bot_api_secret_token:
+        logger.warning("Missing X-Telegram-Bot-Api-Secret-Token header")
+        return False
+    
+    if not hmac.compare_digest(x_telegram_bot_api_secret_token, WEBHOOK_SECRET_TOKEN):
+        logger.warning("Invalid webhook secret token")
+        return False
+    
+    return True
 
 async def start(update: Update, context):
     args = context.args if hasattr(context, 'args') else []
@@ -187,6 +209,8 @@ async def _handle_update(bot: Bot, update: Update):
             "Неизвестная команда. Используйте /help для списка команд."
         )
 
+# ===== POLLING MODE =====
+
 async def _polling_loop(bot: Bot):
     offset = 0
     while True:
@@ -237,16 +261,75 @@ async def stop_polling():
         logger.info("Telegram bot polling stopped")
     _bot_instance = None
 
+# ===== WEBHOOK MODE =====
+
+@router.post("/webhook")
+async def telegram_webhook(
+    request: Request, 
+    x_telegram_bot_api_secret_token: str | None = Header(None)
+):
+    # Verify webhook secret token
+    if not await verify_webhook_secret(x_telegram_bot_api_secret_token):
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
+    
+    try:
+        update_data = await request.json()
+        bot = Bot(token=TG_BOT_TOKEN)
+        update = Update.de_json(update_data, bot)
+        await _handle_update(bot, update)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error processing Telegram update: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/setup-webhook")
+async def setup_webhook(request: Request):
+    """Set up Telegram webhook with secret token."""
+    if not TG_BOT_TOKEN:
+        raise HTTPException(status_code=500, detail="TG_BOT_TOKEN not set")
+    
+    # Use HTTPS for production domain since nginx terminates SSL
+    base_url = str(request.base_url).rstrip('/')
+    if base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
+    webhook_url = f"{base_url}/api/telegram/webhook"
+    
+    bot = Bot(token=TG_BOT_TOKEN)
+    try:
+        # Delete existing webhook first
+        await bot.delete_webhook(drop_pending_updates=True)
+        
+        # Set new webhook with secret token if configured
+        kwargs = {
+            "url": webhook_url,
+            "allowed_updates": ["message"],
+            "drop_pending_updates": True
+        }
+        if WEBHOOK_SECRET_TOKEN:
+            kwargs["secret_token"] = WEBHOOK_SECRET_TOKEN
+        
+        await bot.set_webhook(**kwargs)
+        logger.info(f"Webhook set to {webhook_url}")
+        
+        return {
+            "status": "ok",
+            "webhook_url": webhook_url,
+            "has_secret": bool(WEBHOOK_SECRET_TOKEN)
+        }
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/delete-webhook")
 async def delete_webhook():
-    """Force delete webhook and switch to polling."""
+    """Force delete webhook."""
     if not TG_BOT_TOKEN:
         raise HTTPException(status_code=500, detail="TG_BOT_TOKEN not set")
     
     bot = Bot(token=TG_BOT_TOKEN)
     try:
         await bot.delete_webhook(drop_pending_updates=True)
-        return {"status": "ok", "detail": "Webhook deleted, bot is in polling mode"}
+        return {"status": "ok", "detail": "Webhook deleted"}
     except Exception as e:
         logger.error(f"Failed to delete webhook: {e}")
         raise HTTPException(status_code=500, detail=str(e))
