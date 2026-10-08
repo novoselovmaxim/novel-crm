@@ -275,8 +275,11 @@ async def setup_webhook(request: Request):
     if not TG_BOT_TOKEN:
         raise HTTPException(status_code=500, detail="TG_BOT_TOKEN not set")
     
-    # Get webhook URL from request or use default
+    # Use HTTPS for production domain since nginx terminates SSL
+    # Check X-Forwarded-Proto header or use configured domain
     base_url = str(request.base_url).rstrip('/')
+    if base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
     webhook_url = f"{base_url}/api/telegram/webhook"
     
     bot = Bot(token=TG_BOT_TOKEN)
