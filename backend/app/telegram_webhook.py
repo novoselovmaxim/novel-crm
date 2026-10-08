@@ -1,8 +1,10 @@
 import os
 import asyncio
 import logging
+import hmac
+import hashlib
 from datetime import date, datetime, timezone
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Header
 from sqlalchemy import select, func
 from telegram import Bot, Update
 
@@ -13,10 +15,28 @@ from app.notifications import notifier
 logger = logging.getLogger(__name__)
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
+WEBHOOK_SECRET_TOKEN = os.getenv("TG_WEBHOOK_SECRET_TOKEN", "")
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram-webhook"])
 
 _polling_task = None
+
+async def verify_webhook_secret(request: Request, x_telegram_bot_api_secret_token: str | None = Header(None)):
+    """Verify that the webhook request comes from Telegram using the secret token."""
+    if not WEBHOOK_SECRET_TOKEN:
+        logger.warning("TG_WEBHOOK_SECRET_TOKEN not set, skipping webhook validation")
+        return True
+    
+    if not x_telegram_bot_api_secret_token:
+        logger.warning("Missing X-Telegram-Bot-Api-Secret-Token header")
+        return False
+    
+    # Telegram sends the secret token directly in the header
+    if not hmac.compare_digest(x_telegram_bot_api_secret_token, WEBHOOK_SECRET_TOKEN):
+        logger.warning("Invalid webhook secret token")
+        return False
+    
+    return True
 
 async def start(update: Update, context):
     args = context.args if hasattr(context, 'args') else []
@@ -235,7 +255,11 @@ async def stop_polling():
         logger.info("Telegram bot polling stopped")
 
 @router.post("/webhook")
-async def telegram_webhook(request: Request):
+async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: str | None = Header(None)):
+    # Verify webhook secret token
+    if not await verify_webhook_secret(request, x_telegram_bot_api_secret_token):
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
+    
     try:
         update_data = await request.json()
         update = Update.de_json(update_data, Bot(token=TG_BOT_TOKEN))
@@ -246,5 +270,37 @@ async def telegram_webhook(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/setup-webhook")
-async def setup_webhook():
-    return {"status": "polling_mode", "detail": "Bot is running in polling mode."}
+async def setup_webhook(request: Request):
+    """Set up Telegram webhook with secret token."""
+    if not TG_BOT_TOKEN:
+        raise HTTPException(status_code=500, detail="TG_BOT_TOKEN not set")
+    
+    # Get webhook URL from request or use default
+    base_url = str(request.base_url).rstrip('/')
+    webhook_url = f"{base_url}/api/telegram/webhook"
+    
+    bot = Bot(token=TG_BOT_TOKEN)
+    try:
+        # Delete existing webhook first
+        await bot.delete_webhook(drop_pending_updates=True)
+        
+        # Set new webhook with secret token if configured
+        kwargs = {
+            "url": webhook_url,
+            "allowed_updates": ["message"],
+            "drop_pending_updates": True
+        }
+        if WEBHOOK_SECRET_TOKEN:
+            kwargs["secret_token"] = WEBHOOK_SECRET_TOKEN
+        
+        await bot.set_webhook(**kwargs)
+        logger.info(f"Webhook set to {webhook_url}")
+        
+        return {
+            "status": "ok",
+            "webhook_url": webhook_url,
+            "has_secret": bool(WEBHOOK_SECRET_TOKEN)
+        }
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
